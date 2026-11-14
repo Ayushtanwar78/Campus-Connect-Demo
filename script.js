@@ -4,7 +4,7 @@
  * Example: https://xxxxxxxx.lambda-url.ap-south-1.on.aws/
  * Do not put AWS credentials or secrets in browser code.
  */
-const API_BASE = ""; // TODO: paste your Lambda Function URL here, including trailing slash
+const API_BASE = "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/"; // TODO: paste your Lambda Function URL here, including trailing slash
 const DEMO_MODE = false; // Set true only for local mock mode; not cloud persistence
 
 const views = ["dashboard", "report", "complaints"];
