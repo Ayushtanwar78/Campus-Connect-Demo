@@ -14,11 +14,7 @@ def response(status_code, body):
     return {
         "statusCode": status_code,
         "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-            "Access-Control-Allow-Headers": "content-type",
-            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-            "Vary": "Origin",
+            "Content-Type": "application/json"
         },
         "body": json.dumps(body, default=str),
     }
