@@ -1,4 +1,3 @@
-
 const API_BASE = "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
 const DEMO_MODE = false;
 
@@ -14,6 +13,9 @@ const $ = id => document.getElementById(id);
 
 let complaintsCache = [];
 let toastTimer;
+
+const MAX_FILE_SIZE = 2 * 1024 * 1024;
+const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"];
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({
@@ -67,7 +69,8 @@ function normalizeComplaint(item) {
     description: item.description || "",
     priority: String(item.priority || "medium").toLowerCase(),
     status: item.status || "submitted",
-    created_at: item.created_at || item.createdAt || ""
+    created_at: item.created_at || item.createdAt || "",
+    attachment_key: item.attachment_key || ""
   };
 }
 
@@ -93,6 +96,21 @@ function extractComplaints(data) {
   return [];
 }
 
+/* Unwrap Lambda response body when necessary */
+function unwrapApiData(data) {
+  if (!data || !data.body) return data || {};
+
+  try {
+    return typeof data.body === "string"
+      ? JSON.parse(data.body)
+      : data.body;
+  } catch (error) {
+    console.error("Could not parse Lambda response body:", error);
+    return data;
+  }
+}
+
+/* API request helper */
 async function apiRequest(path, options = {}) {
   const base = API_BASE.endsWith("/") ? API_BASE : API_BASE + "/";
 
@@ -104,12 +122,71 @@ async function apiRequest(path, options = {}) {
   });
 
   const data = await response.json().catch(() => ({}));
+  const result = unwrapApiData(data);
 
   if (!response.ok) {
-    throw new Error(data.error || `Request failed (${response.status})`);
+    throw new Error(
+      result.error ||
+      result.message ||
+      data.error ||
+      `Request failed (${response.status})`
+    );
   }
 
-  return data;
+  return result;
+}
+
+/* Upload selected image to S3 using a temporary URL */
+async function uploadAttachment(file) {
+  if (!file) return "";
+
+  if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    throw new Error("Only JPG and PNG images are allowed.");
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error("Image size must not exceed 2 MB.");
+  }
+
+  showToast("Preparing image upload...");
+
+  /* Step 1: Request a presigned upload URL from Lambda */
+  const uploadData = await apiRequest("upload-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      content_type: file.type,
+      file_size: file.size
+    })
+  });
+
+  const uploadUrl = uploadData.upload_url;
+  const attachmentKey = uploadData.attachment_key;
+
+  if (!uploadUrl || !attachmentKey) {
+    throw new Error("Lambda did not return a valid upload URL.");
+  }
+
+  /* Step 2: Upload the actual image directly to S3 */
+  showToast("Uploading image...");
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type
+    },
+    body: file
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(
+      `S3 image upload failed (${uploadResponse.status}).`
+    );
+  }
+
+  return attachmentKey;
 }
 
 /* Load complaints from AWS */
@@ -135,9 +212,17 @@ function render() {
     return new Date(b.created_at || 0) - new Date(a.created_at || 0);
   });
 
-  const pending = items.filter(x => displayStatus(x.status) === "Pending").length;
-  const progress = items.filter(x => displayStatus(x.status) === "In Progress").length;
-  const resolved = items.filter(x => displayStatus(x.status) === "Resolved").length;
+  const pending = items.filter(
+    x => displayStatus(x.status) === "Pending"
+  ).length;
+
+  const progress = items.filter(
+    x => displayStatus(x.status) === "In Progress"
+  ).length;
+
+  const resolved = items.filter(
+    x => displayStatus(x.status) === "Resolved"
+  ).length;
 
   if ($("totalCount")) $("totalCount").textContent = items.length;
   if ($("pendingCount")) $("pendingCount").textContent = pending;
@@ -164,11 +249,15 @@ function render() {
   }
 
   /* Status filtering */
-  const filter = $("statusFilter") ? $("statusFilter").value : "All";
+  const filter = $("statusFilter")
+    ? $("statusFilter").value
+    : "All";
 
   const filtered = filter === "All"
     ? items
-    : items.filter(item => displayStatus(item.status) === filter);
+    : items.filter(
+        item => displayStatus(item.status) === filter
+      );
 
   /* Individual complaint cards */
   if ($("allComplaints")) {
@@ -177,7 +266,9 @@ function render() {
         <div class="complaint-card-top">
           <div class="complaint-card-heading">
             <h3>${escapeHTML(item.title)}</h3>
-            <span class="complaint-id">ID: ${escapeHTML(item.complaint_id || "—")}</span>
+            <span class="complaint-id">
+              ID: ${escapeHTML(item.complaint_id || "—")}
+            </span>
           </div>
           ${statusBadge(item.status)}
         </div>
@@ -200,7 +291,9 @@ function render() {
 
           <div class="complaint-detail">
             <span class="detail-label">Priority</span>
-            <strong class="priority ${escapeHTML(item.priority)}">${escapeHTML(item.priority.toUpperCase())}</strong>
+            <strong class="priority ${escapeHTML(item.priority)}">
+              ${escapeHTML(item.priority.toUpperCase())}
+            </strong>
           </div>
         </div>
 
@@ -208,6 +301,13 @@ function render() {
           <span class="detail-label">Description</span>
           <p>${escapeHTML(item.description || "No description provided.")}</p>
         </div>
+
+        ${item.attachment_key ? `
+          <div class="complaint-attachment">
+            <span class="detail-label">Attachment</span>
+            <strong>Image uploaded</strong>
+          </div>
+        ` : ""}
       </article>
     `).join("");
   }
@@ -223,18 +323,25 @@ function showView(name) {
 
   views.forEach(view => {
     const section = $(view + "View");
-    if (section) section.classList.toggle("active", view === name);
+    if (section) {
+      section.classList.toggle("active", view === name);
+    }
   });
 
   document.querySelectorAll(".nav-link").forEach(button => {
-    button.classList.toggle("active", button.dataset.view === name);
+    button.classList.toggle(
+      "active",
+      button.dataset.view === name
+    );
   });
 
   if ($("breadcrumbTitle")) {
     $("breadcrumbTitle").textContent = viewTitles[name];
   }
 
-  if ($("sidebar")) $("sidebar").classList.remove("open");
+  if ($("sidebar")) {
+    $("sidebar").classList.remove("open");
+  }
 
   if (name === "dashboard" || name === "complaints") {
     refreshData();
@@ -260,7 +367,9 @@ document.querySelectorAll("[data-view], [data-go]").forEach(button => {
 /* Mobile menu */
 if ($("menuToggle")) {
   $("menuToggle").addEventListener("click", () => {
-    $("sidebar").classList.toggle("open");
+    if ($("sidebar")) {
+      $("sidebar").classList.toggle("open");
+    }
   });
 }
 
@@ -274,18 +383,31 @@ if ($("attachment")) {
   $("attachment").addEventListener("change", event => {
     const file = event.target.files[0];
 
-    if (!file) return;
+    if (!file) {
+      if ($("fileHint")) {
+        $("fileHint").textContent =
+          "JPG or PNG only. Maximum size 2 MB.";
+      }
+      return;
+    }
 
-    const validType = ["image/jpeg", "image/png"].includes(file.type);
-    const validSize = file.size <= 2 * 1024 * 1024;
+    const validType = ALLOWED_FILE_TYPES.includes(file.type);
+    const validSize = file.size <= MAX_FILE_SIZE;
 
     if (!validType || !validSize) {
       event.target.value = "";
-      $("fileHint").textContent = "Choose a JPG or PNG file up to 2 MB.";
+
+      if ($("fileHint")) {
+        $("fileHint").textContent =
+          "Choose a JPG or PNG file up to 2 MB.";
+      }
+
       showToast("Choose a JPG or PNG file up to 2 MB.");
     } else {
-      $("fileHint").textContent =
-        `${file.name} selected. Image upload to S3 is not enabled yet.`;
+      if ($("fileHint")) {
+        $("fileHint").textContent =
+          `${file.name} selected. Ready to upload.`;
+      }
     }
   });
 }
@@ -300,6 +422,9 @@ if ($("complaintForm")) {
     if (!form.reportValidity()) return;
 
     const formData = new FormData(form);
+    const selectedFile = $("attachment")
+      ? $("attachment").files[0]
+      : null;
 
     const payload = {
       student_id: "student-demo-01",
@@ -307,8 +432,19 @@ if ($("complaintForm")) {
       category: String(formData.get("category") || "").trim(),
       location: String(formData.get("location") || "").trim(),
       description: String(formData.get("description") || "").trim(),
-      priority: String(formData.get("priority") || "medium").toLowerCase()
+      priority: String(formData.get("priority") || "medium").toLowerCase(),
+      attachment_key: ""
     };
+
+    if (selectedFile) {
+      const validType = ALLOWED_FILE_TYPES.includes(selectedFile.type);
+      const validSize = selectedFile.size <= MAX_FILE_SIZE;
+
+      if (!validType || !validSize) {
+        showToast("Choose a JPG or PNG file up to 2 MB.");
+        return;
+      }
+    }
 
     if (DEMO_MODE) {
       const list = JSON.parse(
@@ -336,6 +472,15 @@ if ($("complaintForm")) {
     }
 
     try {
+      /* Upload image first, if the user selected one */
+      if (selectedFile) {
+        payload.attachment_key =
+          await uploadAttachment(selectedFile);
+      }
+
+      /* Submit complaint with the S3 object key */
+      showToast("Submitting complaint...");
+
       await apiRequest("complaints", {
         method: "POST",
         headers: {
@@ -348,12 +493,17 @@ if ($("complaintForm")) {
 
       if ($("fileHint")) {
         $("fileHint").textContent =
-          "JPG or PNG only. Image upload to S3 is not enabled yet.";
+          "JPG or PNG only. Maximum size 2 MB.";
       }
 
       await loadComplaints();
       showView("complaints");
-      showToast("Complaint submitted successfully!");
+
+      showToast(
+        selectedFile
+          ? "Complaint and image submitted successfully!"
+          : "Complaint submitted successfully!"
+      );
 
     } catch (error) {
       console.error("Complaint submission failed:", error);
