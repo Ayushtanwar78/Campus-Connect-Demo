@@ -684,3 +684,42 @@ tbody tr:last-child td { border-bottom: 0; }
 [hidden] {
   display: none !important;
 }
+
+/* User profile section */
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-info strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.profile-info small {
+  font-size: 11px;
+  color: #777;
+}
+
+.logout-button {
+  border: none;
+  background: #fff0f0;
+  color: #d33;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background: #ffdddd;
+}

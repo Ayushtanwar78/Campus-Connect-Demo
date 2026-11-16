@@ -1044,3 +1044,66 @@ render();
 if (API_BASE && !DEMO_MODE && campusToken) {
   refreshData();
 }
+
+// ==========================================
+// USER PROFILE AND LOGOUT
+// ==========================================
+
+(function setupProfileAndLogout() {
+
+  const user = JSON.parse(
+    sessionStorage.getItem("campusUser") || "{}"
+  );
+
+  const role = (user.role || "").toLowerCase();
+
+  const roleNames = {
+    student: "Student",
+    administrator: "Administrator",
+    analyst: "Analyst"
+  };
+
+  const displayName = user.full_name || "User";
+
+  const profileName = document.getElementById("profileName");
+  const profileRole = document.getElementById("profileRole");
+  const profileAvatar = document.getElementById("profileAvatar");
+  const logoutButton = document.getElementById("logoutButton");
+
+  // Display logged-in user's name.
+  if (profileName) {
+    profileName.textContent = displayName;
+  }
+
+  // Display the correct role.
+  if (profileRole) {
+    profileRole.textContent = roleNames[role] || "User";
+  }
+
+  // Generate initials from the user's name.
+  if (profileAvatar) {
+    const initials = displayName
+      .trim()
+      .split(/\s+/)
+      .map(word => word[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+
+    profileAvatar.textContent = initials || "U";
+  }
+
+  // Logout functionality.
+  if (logoutButton) {
+    logoutButton.addEventListener("click", function () {
+
+      sessionStorage.removeItem("campusToken");
+      sessionStorage.removeItem("campusUser");
+      sessionStorage.removeItem("campusTokenExpiry");
+
+      window.location.href = "login.html";
+
+    });
+  }
+
+})();
