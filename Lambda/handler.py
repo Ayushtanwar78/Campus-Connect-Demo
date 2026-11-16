@@ -2,6 +2,8 @@ import json
 import os
 import uuid
 import re
+import hashlib
+import secrets
 from datetime import datetime, timezone
 
 import boto3
@@ -44,6 +46,29 @@ def response(status_code, body):
 
 
 # ==========================================
+# PASSWORD SECURITY
+# ==========================================
+
+def hash_password(password):
+
+    salt = secrets.token_bytes(16)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        600000
+    )
+
+    return (
+        "pbkdf2_sha256$600000$"
+        + salt.hex()
+        + "$"
+        + password_hash.hex()
+    )
+
+
+# ==========================================
 # SNS NOTIFICATION
 # ==========================================
 
@@ -75,6 +100,7 @@ Please log in to the CampusConnect dashboard.
             Subject="New CampusConnect Complaint",
             Message=message
         )
+
         print("SNS notification published successfully")
 
     except ClientError as error:
@@ -100,9 +126,17 @@ def register_user(body):
     mobile = str(body.get("mobile", "")).strip()
     role = str(body.get("role", "")).strip().lower()
 
-    if not all([full_name, email, mobile, role]):
+    password = body.get("password", "")
+
+    # Validate required fields
+    if not all([full_name, email, mobile, role, password]):
         return response(400, {
-            "error": "Please fill in all required fields"
+            "error": "Please fill in all required fields, including password"
+        })
+
+    if not isinstance(password, str):
+        return response(400, {
+            "error": "Invalid password"
         })
 
     if len(full_name) > 120:
@@ -110,29 +144,58 @@ def register_user(body):
             "error": "Full name is too long"
         })
 
+    # Email validation
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         return response(400, {
             "error": "Invalid email address"
         })
 
+    # Mobile validation
     if not re.fullmatch(r"[0-9+\-\s()]{7,20}", mobile):
         return response(400, {
             "error": "Invalid mobile number"
         })
 
+    # Role validation
     if role not in {"student", "analyst", "administrator"}:
         return response(400, {
             "error": "Invalid registration role"
         })
 
+    # Password validation
+    if len(password) < 8 or len(password) > 128:
+        return response(400, {
+            "error": "Password must contain 8 to 128 characters"
+        })
+
+    if not (
+        re.search(r"[A-Z]", password)
+        and re.search(r"[a-z]", password)
+        and re.search(r"[0-9]", password)
+    ):
+        return response(400, {
+            "error": "Password must contain uppercase, lowercase and numeric characters"
+        })
+
+    # Securely hash password
+    password_hash = hash_password(password)
+
     current_time = datetime.now(timezone.utc).isoformat()
+
+    # Students are automatically activated.
+    # Analysts and administrators require approval.
+    account_status = (
+        "active" if role == "student"
+        else "pending_approval"
+    )
 
     item = {
         "email": email,
         "full_name": full_name,
         "mobile": mobile,
         "requested_role": role,
-        "account_status": "pending_approval",
+        "account_status": account_status,
+        "password_hash": password_hash,
         "created_at": current_time
     }
 
@@ -190,12 +253,33 @@ def register_user(body):
             ConditionExpression="attribute_not_exists(email)"
         )
 
-        print("User registration saved:", email)
+        print(
+            "User registration saved:",
+            email,
+            "Status:",
+            account_status
+        )
+
+        if role == "student":
+
+            message = (
+                "Student registration successful. "
+                "Your account is active. "
+                "You can now proceed to the login page."
+            )
+
+        else:
+
+            message = (
+                "Registration submitted successfully. "
+                "Your account requires admin approval."
+            )
 
         return response(201, {
-            "message": "Registration submitted successfully. Approval and password setup are still required.",
+            "message": message,
             "email": email,
-            "account_status": "pending_approval"
+            "role": role,
+            "account_status": account_status
         })
 
     except ClientError as error:
@@ -226,7 +310,7 @@ def lambda_handler(event, context):
 
     path = event.get("rawPath", "/").rstrip("/") or "/"
 
-    # CORS
+    # CORS preflight
     if method == "OPTIONS":
         return response(200, {"ok": True})
 
