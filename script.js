@@ -132,7 +132,7 @@ function configureRoleInterface() {
   if (dashboardHeading) {
     dashboardHeading.textContent = isAdmin
       ? "ADMINISTRATOR DASHBOARD"
-      : "STUDENT PORTAL";
+      : "ADMIN PORTAL";
   }
 }
 
