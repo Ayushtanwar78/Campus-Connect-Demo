@@ -175,6 +175,11 @@ function configureRoleInterface() {
     profileRole.textContent = isAdmin ? "Administrator" : "Student";
   }
 
+  //Show Complaint status statistics Only to Administrator.
+  DocumentFragment.querySelectorAll("[data-admin-only]").forEach(card => {
+    card.hidden = !isAdmin;
+  });  
+
   // Start with the dashboard.
   showView("dashboard");
   
