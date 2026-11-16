@@ -124,6 +124,18 @@ function configureRoleInterface() {
     element.hidden = !allowed;
   });
 
+  const adminPanel = document.getElementById("adminView");
+  if (adminPanel) adminPanel.hidden = !isAdmin;
+
+  const reportPanel = document.getElementById("reportView");
+  if (reportPanel) reportPanel.hidden = !isStudent;
+
+  const complaintsPanel = document.getElementById("complaintsView");
+  if (complaintsPanel) complaintsPanel.hidden = !isStudent;
+
+  showView("dashboard");
+}
+
   // Show the correct dashboard heading.
   const dashboardHeading = document.querySelector(
     "#dashboardView h1, #dashboardView h2"
@@ -134,7 +146,7 @@ function configureRoleInterface() {
       ? "ADMINISTRATOR DASHBOARD"
       : "ADMIN PORTAL";
   }
-}
+
 
   // Update the profile name if the existing profile elements are present.
   const profileName = document.querySelector(
