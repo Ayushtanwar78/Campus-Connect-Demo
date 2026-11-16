@@ -1107,3 +1107,52 @@ if (API_BASE && !DEMO_MODE && campusToken) {
   }
 
 })();
+function setupProfileAndLogout() {
+  const user = JSON.parse(
+    sessionStorage.getItem("campusUser") || "{}"
+  );
+
+  const roleNames = {
+    student: "Student",
+    administrator: "Administrator",
+    analyst: "Analyst"
+  };
+
+  const name = user.full_name || "User";
+  const role = (user.role || "").toLowerCase();
+
+  const profileName = document.getElementById("profileName");
+  const profileRole = document.getElementById("profileRole");
+  const profileAvatar = document.getElementById("profileAvatar");
+  const logoutButton = document.getElementById("logoutButton");
+
+  if (profileName) {
+    profileName.textContent = name;
+  }
+
+  if (profileRole) {
+    profileRole.textContent = roleNames[role] || "User";
+  }
+
+  if (profileAvatar) {
+    profileAvatar.textContent = name
+      .trim()
+      .split(/\s+/)
+      .map(word => word[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  }
+
+  if (logoutButton) {
+    logoutButton.addEventListener("click", () => {
+      sessionStorage.removeItem("campusToken");
+      sessionStorage.removeItem("campusUser");
+      sessionStorage.removeItem("campusTokenExpiry");
+
+      window.location.href = "login.html";
+    });
+  }
+}
+
+setupProfileAndLogout();
