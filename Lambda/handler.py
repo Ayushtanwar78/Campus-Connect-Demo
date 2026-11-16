@@ -7,9 +7,11 @@ import secrets
 import hmac
 import base64
 import time
+
 from datetime import datetime, timezone
 
 import boto3
+from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError
 
 
@@ -20,19 +22,14 @@ from botocore.exceptions import ClientError
 TABLE_NAME = os.environ["TABLE_NAME"]
 ALLOWED_ORIGIN = os.environ["ALLOWED_ORIGIN"]
 S3_BUCKET = os.environ["S3_BUCKET"]
-SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
 AUTH_SECRET = os.environ["AUTH_SECRET"]
 
 dynamodb = boto3.resource("dynamodb")
 
-# Complaints table
 table = dynamodb.Table(TABLE_NAME)
-
-# Users table
 users_table = dynamodb.Table("CampusUsersData")
 
 s3 = boto3.client("s3")
-sns = boto3.client("sns")
 
 
 # ==========================================
@@ -40,13 +37,27 @@ sns = boto3.client("sns")
 # ==========================================
 
 def response(status_code, body):
+
     return {
         "statusCode": status_code,
         "headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
         },
         "body": json.dumps(body, default=str)
     }
+
+
+def get_request_body(event):
+
+    body = event.get("body") or "{}"
+
+    if event.get("isBase64Encoded"):
+        body = base64.b64decode(body).decode("utf-8")
+
+    return json.loads(body)
 
 
 # ==========================================
@@ -71,9 +82,11 @@ def hash_password(password):
         + password_hash.hex()
     )
 
+
 def verify_password(password, stored_hash):
 
     try:
+
         algorithm, iterations, salt_hex, hash_hex = stored_hash.split("$")
 
         if algorithm != "pbkdf2_sha256":
@@ -94,19 +107,28 @@ def verify_password(password, stored_hash):
             iterations
         )
 
-        return hmac.compare_digest(actual_hash, expected_hash)
+        return hmac.compare_digest(
+            actual_hash,
+            expected_hash
+        )
 
     except (ValueError, TypeError, AttributeError):
         return False
 
 
+# ==========================================
+# LOGIN TOKEN GENERATION
+# ==========================================
+
 def generate_login_token(email, role):
+
+    current_time = int(time.time())
 
     payload = {
         "sub": email,
         "role": role,
-        "iat": int(time.time()),
-        "exp": int(time.time()) + 3600
+        "iat": current_time,
+        "exp": current_time + 3600
     }
 
     payload_json = json.dumps(
@@ -131,47 +153,139 @@ def generate_login_token(email, role):
     return encoded_payload + "." + encoded_signature
 
 
-
 # ==========================================
-# SNS NOTIFICATION
+# TOKEN VERIFICATION
 # ==========================================
 
-def send_new_complaint_notification(item):
+def authenticate_user(event):
 
-    if not SNS_TOPIC_ARN:
-        print("SNS_TOPIC_ARN is not configured")
-        return
+    headers = event.get("headers") or {}
 
-    message = f"""
-A new complaint has been registered in CampusConnect.
+    authorization = (
+        headers.get("authorization")
+        or headers.get("Authorization")
+        or ""
+    )
 
-Complaint ID: {item['complaint_id']}
-Title: {item['title']}
-Category: {item['category']}
-Location: {item['location']}
-Priority: {item['priority'].upper()}
-Status: {item['status'].upper()}
-Date: {item['created_at']}
+    if not authorization.startswith("Bearer "):
 
-Image attached: {"Yes" if item.get("attachment_key") else "No"}
+        return None, response(401, {
+            "error": "Authentication required. Please log in."
+        })
 
-Please log in to the CampusConnect dashboard.
-"""
+    token = authorization[7:].strip()
 
     try:
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject="New CampusConnect Complaint",
-            Message=message
+
+        parts = token.split(".")
+
+        if len(parts) != 2:
+            raise ValueError("Invalid token format")
+
+        encoded_payload, encoded_signature = parts
+
+        expected_signature = hmac.new(
+            AUTH_SECRET.encode("utf-8"),
+            encoded_payload.encode("utf-8"),
+            hashlib.sha256
+        ).digest()
+
+        supplied_signature = base64.urlsafe_b64decode(
+            encoded_signature
+            + "=" * (-len(encoded_signature) % 4)
         )
 
-        print("SNS notification published successfully")
+        if not hmac.compare_digest(
+            expected_signature,
+            supplied_signature
+        ):
+            raise ValueError("Invalid signature")
+
+        decoded_payload = base64.urlsafe_b64decode(
+            encoded_payload
+            + "=" * (-len(encoded_payload) % 4)
+        )
+
+        payload = json.loads(decoded_payload.decode("utf-8"))
+
+        email = str(payload.get("sub", "")).strip().lower()
+        role = str(payload.get("role", "")).strip().lower()
+        expiry = int(payload.get("exp", 0))
+
+        if not email or not role:
+            raise ValueError("Missing token information")
+
+        if int(time.time()) >= expiry:
+            return None, response(401, {
+                "error": "Your session has expired. Please log in again."
+            })
+
+        if role not in {"student", "administrator", "analyst"}:
+            raise ValueError("Invalid role")
+
+    except Exception:
+
+        return None, response(401, {
+            "error": "Invalid authentication token. Please log in again."
+        })
+
+    # Check current account status and role in DynamoDB.
+
+    try:
+
+        result = users_table.get_item(
+            Key={"email": email}
+        )
+
+        user = result.get("Item")
+
+        if not user:
+            return None, response(401, {
+                "error": "User account not found"
+            })
+
+        if user.get("account_status") != "active":
+            return None, response(403, {
+                "error": "Your account is not active"
+            })
+
+        current_role = str(
+            user.get("requested_role", "")
+        ).lower()
+
+        if current_role != role:
+            return None, response(401, {
+                "error": "Account role has changed. Please log in again."
+            })
+
+        return {
+            "email": email,
+            "role": role,
+            "full_name": user.get("full_name", "")
+        }, None
 
     except ClientError as error:
-        print("SNS notification failed:", error)
 
-    except Exception as error:
-        print("Unexpected SNS error:", str(error))
+        print("Authentication DynamoDB error:", error)
+
+        return None, response(500, {
+            "error": "Unable to verify your account"
+        })
+
+
+# ==========================================
+# ROLE PERMISSIONS
+# ==========================================
+
+def require_role(user, allowed_roles):
+
+    if user.get("role") not in allowed_roles:
+
+        return response(403, {
+            "error": "You do not have permission to perform this action"
+        })
+
+    return None
 
 
 # ==========================================
@@ -192,10 +306,9 @@ def register_user(body):
 
     password = body.get("password", "")
 
-    # Validate required fields
     if not all([full_name, email, mobile, role, password]):
         return response(400, {
-            "error": "Please fill in all required fields, including password"
+            "error": "Please fill in all required fields"
         })
 
     if not isinstance(password, str):
@@ -208,25 +321,21 @@ def register_user(body):
             "error": "Full name is too long"
         })
 
-    # Email validation
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         return response(400, {
             "error": "Invalid email address"
         })
 
-    # Mobile validation
     if not re.fullmatch(r"[0-9+\-\s()]{7,20}", mobile):
         return response(400, {
             "error": "Invalid mobile number"
         })
 
-    # Role validation
     if role not in {"student", "analyst", "administrator"}:
         return response(400, {
             "error": "Invalid registration role"
         })
 
-    # Password validation
     if len(password) < 8 or len(password) > 128:
         return response(400, {
             "error": "Password must contain 8 to 128 characters"
@@ -241,13 +350,10 @@ def register_user(body):
             "error": "Password must contain uppercase, lowercase and numeric characters"
         })
 
-    # Securely hash password
     password_hash = hash_password(password)
 
     current_time = datetime.now(timezone.utc).isoformat()
 
-    # Students are automatically activated.
-    # Analysts and administrators require approval.
     account_status = (
         "active" if role == "student"
         else "pending_approval"
@@ -263,7 +369,6 @@ def register_user(body):
         "created_at": current_time
     }
 
-    # Student details
     if role == "student":
 
         roll_number = str(body.get("roll_number", "")).strip()
@@ -288,7 +393,6 @@ def register_user(body):
             "department": department[:100]
         })
 
-    # Analyst and Administrator details
     else:
 
         employee_id = str(body.get("employee_id", "")).strip()
@@ -317,19 +421,11 @@ def register_user(body):
             ConditionExpression="attribute_not_exists(email)"
         )
 
-        print(
-            "User registration saved:",
-            email,
-            "Status:",
-            account_status
-        )
-
         if role == "student":
 
             message = (
                 "Student registration successful. "
-                "Your account is active. "
-                "You can now proceed to the login page."
+                "Your account is active. You can now log in."
             )
 
         else:
@@ -355,11 +451,12 @@ def register_user(body):
                 "error": "This email is already registered"
             })
 
-        print("User registration failed:", error)
+        print("Registration error:", error)
 
         return response(500, {
             "error": "Could not save registration"
         })
+
 
 # ==========================================
 # USER LOGIN
@@ -393,7 +490,6 @@ def login_user(body):
 
         user = result.get("Item")
 
-        # Use the same message for unknown email and wrong password.
         if not user or not verify_password(
             password,
             user.get("password_hash", "")
@@ -402,7 +498,6 @@ def login_user(body):
                 "error": "Invalid email or password"
             })
 
-        # Only active accounts can log in.
         if user.get("account_status") != "active":
             return response(403, {
                 "error": "Your account is pending admin approval"
@@ -443,407 +538,588 @@ def login_user(body):
 
 
 # ==========================================
-# LAMBDA HANDLER
+# GET COMPLAINTS
+# ==========================================
+
+def get_complaints(user):
+
+    try:
+
+        if user["role"] == "administrator":
+
+            result = table.scan(Limit=100)
+
+        elif user["role"] == "student":
+
+            result = table.scan(
+                FilterExpression=Attr("student_id").eq(user["email"]),
+                Limit=100
+            )
+
+        else:
+
+            return response(403, {
+                "error": "Analysts cannot access complaint records"
+            })
+
+        items = result.get("Items", [])
+
+        # Continue scanning if DynamoDB has more records.
+        while "LastEvaluatedKey" in result and len(items) < 100:
+
+            result = table.scan(
+                ExclusiveStartKey=result["LastEvaluatedKey"],
+                **(
+                    {"FilterExpression": Attr("student_id").eq(user["email"])}
+                    if user["role"] == "student"
+                    else {}
+                ),
+                Limit=100
+            )
+
+            items.extend(result.get("Items", []))
+
+        return response(200, {
+            "items": items[:100]
+        })
+
+    except ClientError as error:
+
+        print("DynamoDB complaint scan failed:", error)
+
+        return response(500, {
+            "error": "Could not load complaints"
+        })
+
+
+# ==========================================
+# GENERATE S3 UPLOAD URL
+# ==========================================
+
+def generate_upload_url(body):
+
+    content_type = body.get("content_type", "")
+
+    allowed_types = {
+        "image/jpeg": "jpg",
+        "image/png": "png"
+    }
+
+    if content_type not in allowed_types:
+        return response(400, {
+            "error": "Only JPEG and PNG images are allowed"
+        })
+
+    try:
+        file_size = int(body.get("file_size", 0))
+    except (TypeError, ValueError):
+        return response(400, {
+            "error": "Invalid file size"
+        })
+
+    if file_size <= 0 or file_size > 5 * 1024 * 1024:
+        return response(400, {
+            "error": "Image must be between 1 byte and 5 MB"
+        })
+
+    extension = allowed_types[content_type]
+
+    object_key = f"attachments/{uuid.uuid4()}.{extension}"
+
+    try:
+
+        upload_url = s3.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": S3_BUCKET,
+                "Key": object_key,
+                "ContentType": content_type
+            },
+            ExpiresIn=180
+        )
+
+        return response(200, {
+            "upload_url": upload_url,
+            "attachment_key": object_key
+        })
+
+    except ClientError as error:
+
+        print("S3 upload URL error:", error)
+
+        return response(500, {
+            "error": "Could not generate upload URL"
+        })
+
+
+# ==========================================
+# REGISTER NEW COMPLAINT
+# ==========================================
+
+def create_complaint(body, user):
+
+    if not isinstance(body, dict):
+        return response(400, {
+            "error": "Request body must be a JSON object"
+        })
+
+    required = [
+        "title",
+        "category",
+        "location",
+        "description"
+    ]
+
+    if any(
+        not str(body.get(key, "")).strip()
+        for key in required
+    ):
+        return response(400, {
+            "error": "Missing required fields"
+        })
+
+    attachment_key = str(
+        body.get("attachment_key", "")
+    ).strip()
+
+    if attachment_key:
+
+        if not re.fullmatch(
+            r"attachments/[0-9a-fA-F-]{36}\.(jpg|png)",
+            attachment_key
+        ):
+            return response(400, {
+                "error": "Invalid attachment key"
+            })
+
+        try:
+
+            uploaded_file = s3.head_object(
+                Bucket=S3_BUCKET,
+                Key=attachment_key
+            )
+
+            if uploaded_file.get("ContentLength", 0) > 5 * 1024 * 1024:
+                return response(400, {
+                    "error": "Image exceeds 5 MB"
+                })
+
+            if uploaded_file.get("ContentType") not in {
+                "image/jpeg",
+                "image/png"
+            }:
+                return response(400, {
+                    "error": "Invalid image type"
+                })
+
+        except ClientError as error:
+
+            print("Attachment validation error:", error)
+
+            return response(400, {
+                "error": "Uploaded image not found or invalid"
+            })
+
+    current_time = datetime.now(timezone.utc).isoformat()
+
+    item = {
+        "complaint_id": str(uuid.uuid4()),
+
+        # Student identity comes from the verified login token.
+        # Never trust a student_id supplied by the browser.
+        "student_id": user["email"],
+
+        "title": str(body["title"]).strip()[:160],
+        "category": str(body["category"]).strip()[:80],
+        "location": str(body["location"]).strip()[:160],
+        "description": str(body["description"]).strip()[:3000],
+
+        "status": "submitted",
+        "created_at": current_time,
+        "updated_at": current_time,
+
+        "attachment_key": attachment_key,
+
+        "status_history": [
+            {
+                "status": "submitted",
+                "remarks": "Complaint registered",
+                "changed_at": current_time
+            }
+        ]
+    }
+
+    try:
+
+        table.put_item(Item=item)
+
+        print(
+            "Complaint saved successfully:",
+            item["complaint_id"]
+        )
+
+        # SNS notifications remain disabled.
+        print("SNS notification temporarily disabled")
+
+        return response(201, {
+            "message": "Complaint registered successfully",
+            "item": item
+        })
+
+    except ClientError as error:
+
+        print("DynamoDB complaint save error:", error)
+
+        return response(500, {
+            "error": "Could not save complaint"
+        })
+
+
+# ==========================================
+# UPDATE COMPLAINT STATUS
+# ==========================================
+
+def update_complaint_status(body):
+
+    if not isinstance(body, dict):
+        return response(400, {
+            "error": "Request body must be a JSON object"
+        })
+
+    complaint_id = str(
+        body.get("complaint_id", "")
+    ).strip()
+
+    new_status = str(
+        body.get("status", "")
+    ).strip().lower()
+
+    admin_remarks = str(
+        body.get("admin_remarks", "")
+    ).strip()[:1000]
+
+    allowed_statuses = {
+        "pending",
+        "in_progress",
+        "completed",
+        "rejected"
+    }
+
+    if not complaint_id:
+        return response(400, {
+            "error": "Complaint ID is required"
+        })
+
+    if new_status not in allowed_statuses:
+        return response(400, {
+            "error": "Invalid complaint status"
+        })
+
+    current_time = datetime.now(timezone.utc).isoformat()
+
+    history_entry = {
+        "status": new_status,
+        "remarks": admin_remarks,
+        "changed_at": current_time
+    }
+
+    update_expression = """
+        SET #status = :status,
+            updated_at = :updated_at,
+            admin_remarks = :remarks,
+            status_history = list_append(
+                if_not_exists(status_history, :empty_list),
+                :history
+            )
+    """
+
+    expression_values = {
+        ":status": new_status,
+        ":updated_at": current_time,
+        ":remarks": admin_remarks,
+        ":empty_list": [],
+        ":history": [history_entry]
+    }
+
+    if new_status == "completed":
+
+        update_expression += ", resolved_at = :resolved_at"
+
+        expression_values[":resolved_at"] = current_time
+
+    else:
+
+        update_expression += " REMOVE resolved_at"
+
+    try:
+
+        result = table.update_item(
+            Key={
+                "complaint_id": complaint_id
+            },
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames={
+                "#status": "status"
+            },
+            ExpressionAttributeValues=expression_values,
+            ConditionExpression="attribute_exists(complaint_id)",
+            ReturnValues="ALL_NEW"
+        )
+
+        print("Complaint status updated:", complaint_id)
+
+        return response(200, {
+            "message": "Complaint status updated successfully",
+            "item": result.get("Attributes", {})
+        })
+
+    except ClientError as error:
+
+        error_code = error.response["Error"]["Code"]
+
+        print("Complaint status update failed:", error)
+
+        if error_code == "ConditionalCheckFailedException":
+
+            return response(404, {
+                "error": "Complaint not found"
+            })
+
+        return response(500, {
+            "error": "Could not update complaint status"
+        })
+
+
+# ==========================================
+# MAIN LAMBDA HANDLER
 # ==========================================
 
 def lambda_handler(event, context):
 
-    method = event.get(
-        "requestContext", {}
-    ).get("http", {}).get("method", "GET")
+    method = (
+        event.get("requestContext", {})
+        .get("http", {})
+        .get("method", "GET")
+    )
 
     path = event.get("rawPath", "/").rstrip("/") or "/"
 
-    # CORS preflight
+    # --------------------------------------
+    # CORS PREFLIGHT
+    # --------------------------------------
+
     if method == "OPTIONS":
         return response(200, {"ok": True})
 
-    # Health check
-    if method == "GET" and path == "/health":
-        return response(200, {"status": "ok"})
+    # --------------------------------------
+    # HEALTH CHECK
+    # --------------------------------------
 
-# ======================================
-    # LOGIN USER
-    # ======================================
+    if method == "GET" and path == "/health":
+
+        return response(200, {
+            "status": "ok"
+        })
+
+    # --------------------------------------
+    # LOGIN
+    # --------------------------------------
 
     if method == "POST" and path == "/login":
 
         try:
-            body = json.loads(event.get("body") or "{}")
+
+            body = get_request_body(event)
+
             return login_user(body)
 
         except json.JSONDecodeError:
+
             return response(400, {
                 "error": "Invalid JSON"
             })
 
         except Exception as error:
+
             print("Login API error:", str(error))
+
             return response(500, {
                 "error": "Internal server error"
             })
 
-    # ======================================
-    # REGISTER USER
-    # ======================================
+    # --------------------------------------
+    # REGISTRATION
+    # --------------------------------------
 
     if method == "POST" and path == "/register":
 
         try:
-            body = json.loads(event.get("body") or "{}")
+
+            body = get_request_body(event)
+
             return register_user(body)
 
         except json.JSONDecodeError:
+
             return response(400, {
                 "error": "Invalid JSON"
             })
 
         except Exception as error:
+
             print("Registration API error:", str(error))
+
             return response(500, {
                 "error": "Internal server error"
             })
 
-    # ======================================
-    # S3 UPLOAD URL
-    # ======================================
+    # --------------------------------------
+    # AUTHENTICATION FOR PROTECTED ROUTES
+    # --------------------------------------
 
-    if method == "POST" and path == "/upload-url":
+    protected_routes = {
+        (method, path)
+        for method, path in [
+            ("GET", "/complaints"),
+            ("POST", "/complaints"),
+            ("POST", "/upload-url"),
+            ("POST", "/update-status")
+        ]
+    }
 
-        try:
-            body = json.loads(event.get("body") or "{}")
+    if (method, path) in protected_routes:
 
-            content_type = body.get("content_type", "")
+        user, auth_error = authenticate_user(event)
 
-            allowed_types = {
-                "image/jpeg": "jpg",
-                "image/png": "png"
-            }
+        if auth_error:
+            return auth_error
 
-            if content_type not in allowed_types:
-                return response(400, {
-                    "error": "Only JPEG and PNG images are allowed"
-                })
+        # ----------------------------------
+        # STUDENT AND ADMIN COMPLAINT ACCESS
+        # ----------------------------------
+
+        if method == "GET" and path == "/complaints":
+
+            permission_error = require_role(
+                user,
+                {"student", "administrator"}
+            )
+
+            if permission_error:
+                return permission_error
+
+            return get_complaints(user)
+
+        # ----------------------------------
+        # STUDENT ONLY: CREATE COMPLAINT
+        # ----------------------------------
+
+        if method == "POST" and path == "/complaints":
+
+            permission_error = require_role(
+                user,
+                {"student"}
+            )
+
+            if permission_error:
+                return permission_error
 
             try:
-                file_size = int(body.get("file_size", 0))
-            except (TypeError, ValueError):
+
+                body = get_request_body(event)
+
+                return create_complaint(body, user)
+
+            except json.JSONDecodeError:
+
                 return response(400, {
-                    "error": "Invalid file size"
+                    "error": "Invalid JSON"
                 })
 
-            if file_size <= 0 or file_size > 5 * 1024 * 1024:
-                return response(400, {
-                    "error": "Image must be between 1 byte and 5 MB"
+            except Exception as error:
+
+                print("Complaint creation error:", str(error))
+
+                return response(500, {
+                    "error": "Internal server error"
                 })
 
-            extension = allowed_types[content_type]
-            object_key = f"attachments/{uuid.uuid4()}.{extension}"
+        # ----------------------------------
+        # STUDENT ONLY: S3 ATTACHMENT UPLOAD
+        # ----------------------------------
 
-            upload_url = s3.generate_presigned_url(
-                "put_object",
-                Params={
-                    "Bucket": S3_BUCKET,
-                    "Key": object_key,
-                    "ContentType": content_type
-                },
-                ExpiresIn=180
+        if method == "POST" and path == "/upload-url":
+
+            permission_error = require_role(
+                user,
+                {"student"}
             )
 
-            return response(200, {
-                "upload_url": upload_url,
-                "attachment_key": object_key
-            })
+            if permission_error:
+                return permission_error
 
-        except ClientError as error:
-            print("S3 upload URL error:", error)
-            return response(500, {
-                "error": "Could not generate upload URL"
-            })
+            try:
 
-        except json.JSONDecodeError:
-            return response(400, {
-                "error": "Invalid JSON"
-            })
+                body = get_request_body(event)
 
-        except Exception as error:
-            print("Unexpected S3 error:", str(error))
-            return response(500, {
-                "error": "Internal server error"
-            })
+                if not isinstance(body, dict):
+                    return response(400, {
+                        "error": "Invalid request body"
+                    })
 
-    # ======================================
-    # GET COMPLAINTS
-    # ======================================
+                return generate_upload_url(body)
 
-    if method == "GET" and path == "/complaints":
+            except json.JSONDecodeError:
 
-        try:
-            result = table.scan(Limit=50)
-
-            return response(200, {
-                "items": result.get("Items", [])
-            })
-
-        except ClientError as error:
-            print("DynamoDB scan failed:", error)
-            return response(500, {
-                "error": "Could not load complaints"
-            })
-
-    # ======================================
-    # UPDATE COMPLAINT STATUS
-    # ======================================
-
-    if method == "POST" and path == "/update-status":
-
-        try:
-            body = json.loads(event.get("body") or "{}")
-
-            if not isinstance(body, dict):
                 return response(400, {
-                    "error": "Request body must be a JSON object"
+                    "error": "Invalid JSON"
                 })
 
-            complaint_id = str(
-                body.get("complaint_id", "")
-            ).strip()
+            except Exception as error:
 
-            new_status = str(
-                body.get("status", "")
-            ).strip().lower()
+                print("Upload URL error:", str(error))
 
-            admin_remarks = str(
-                body.get("admin_remarks", "")
-            ).strip()[:1000]
-
-            allowed_statuses = {
-                "pending",
-                "in_progress",
-                "completed",
-                "rejected"
-            }
-
-            if not complaint_id:
-                return response(400, {
-                    "error": "Complaint ID is required"
+                return response(500, {
+                    "error": "Internal server error"
                 })
 
-            if new_status not in allowed_statuses:
-                return response(400, {
-                    "error": "Invalid complaint status"
-                })
+        # ----------------------------------
+        # ADMIN ONLY: UPDATE COMPLAINT
+        # ----------------------------------
 
-            current_time = datetime.now(timezone.utc).isoformat()
+        if method == "POST" and path == "/update-status":
 
-            history_entry = {
-                "status": new_status,
-                "remarks": admin_remarks,
-                "changed_at": current_time
-            }
-
-            update_expression = """
-                SET #status = :status,
-                    updated_at = :updated_at,
-                    admin_remarks = :remarks,
-                    status_history = list_append(
-                        if_not_exists(status_history, :empty_list),
-                        :history
-                    )
-            """
-
-            expression_values = {
-                ":status": new_status,
-                ":updated_at": current_time,
-                ":remarks": admin_remarks,
-                ":empty_list": [],
-                ":history": [history_entry]
-            }
-
-            if new_status == "completed":
-                update_expression += ", resolved_at = :resolved_at"
-                expression_values[":resolved_at"] = current_time
-            else:
-                update_expression += " REMOVE resolved_at"
-
-            result = table.update_item(
-                Key={
-                    "complaint_id": complaint_id
-                },
-                UpdateExpression=update_expression,
-                ExpressionAttributeNames={
-                    "#status": "status"
-                },
-                ExpressionAttributeValues=expression_values,
-                ConditionExpression="attribute_exists(complaint_id)",
-                ReturnValues="ALL_NEW"
+            permission_error = require_role(
+                user,
+                {"administrator"}
             )
 
-            print("Complaint status updated:", complaint_id)
+            if permission_error:
+                return permission_error
 
-            return response(200, {
-                "message": "Complaint status updated successfully",
-                "item": result.get("Attributes", {})
-            })
+            try:
 
-        except json.JSONDecodeError:
-            return response(400, {
-                "error": "Invalid JSON"
-            })
+                body = get_request_body(event)
 
-        except ClientError as error:
+                return update_complaint_status(body)
 
-            error_code = error.response["Error"]["Code"]
-            print("Complaint status update failed:", error)
+            except json.JSONDecodeError:
 
-            if error_code == "ConditionalCheckFailedException":
-                return response(404, {
-                    "error": "Complaint not found"
-                })
-
-            return response(500, {
-                "error": "Could not update complaint status"
-            })
-
-        except Exception as error:
-            print("Unexpected status update error:", str(error))
-            return response(500, {
-                "error": "Internal server error"
-            })
-
-    # ======================================
-    # REGISTER COMPLAINT
-    # ======================================
-
-    if method == "POST" and path == "/complaints":
-
-        try:
-            body = json.loads(event.get("body") or "{}")
-
-            if not isinstance(body, dict):
                 return response(400, {
-                    "error": "Request body must be a JSON object"
+                    "error": "Invalid JSON"
                 })
 
-            required = [
-                "student_id",
-                "title",
-                "category",
-                "location",
-                "description"
-            ]
+            except Exception as error:
 
-            if any(
-                not str(body.get(key, "")).strip()
-                for key in required
-            ):
-                return response(400, {
-                    "error": "Missing required fields"
+                print("Status update error:", str(error))
+
+                return response(500, {
+                    "error": "Internal server error"
                 })
 
-            priority = str(
-                body.get("priority", "medium")
-            ).lower()
-
-            if priority not in {"low", "medium", "high"}:
-                return response(400, {
-                    "error": "Priority must be low, medium, or high"
-                })
-
-            # Validate attachment
-            attachment_key = str(
-                body.get("attachment_key", "")
-            ).strip()
-
-            if attachment_key:
-
-                if not re.fullmatch(
-                    r"attachments/[0-9a-fA-F-]{36}\.(jpg|png)",
-                    attachment_key
-                ):
-                    return response(400, {
-                        "error": "Invalid attachment key"
-                    })
-
-                try:
-                    uploaded_file = s3.head_object(
-                        Bucket=S3_BUCKET,
-                        Key=attachment_key
-                    )
-
-                    if uploaded_file.get("ContentLength", 0) > 5 * 1024 * 1024:
-                        return response(400, {
-                            "error": "Image exceeds 5 MB"
-                        })
-
-                    if uploaded_file.get("ContentType") not in {
-                        "image/jpeg",
-                        "image/png"
-                    }:
-                        return response(400, {
-                            "error": "Invalid image type"
-                        })
-
-                except ClientError:
-                    return response(400, {
-                        "error": "Uploaded image not found"
-                    })
-
-            # Create complaint record
-            current_time = datetime.now(timezone.utc).isoformat()
-
-            item = {
-                "complaint_id": str(uuid.uuid4()),
-                "student_id": str(body["student_id"]).strip()[:100],
-                "title": str(body["title"]).strip()[:160],
-                "category": str(body["category"]).strip()[:80],
-                "location": str(body["location"]).strip()[:160],
-                "description": str(body["description"]).strip()[:3000],
-                "priority": priority,
-                "status": "submitted",
-                "created_at": current_time,
-                "updated_at": current_time,
-                "attachment_key": attachment_key,
-                "status_history": [
-                    {
-                        "status": "submitted",
-                        "remarks": "Complaint registered",
-                        "changed_at": current_time
-                    }
-                ]
-            }
-
-            table.put_item(Item=item)
-
-            print("Complaint saved successfully:", item["complaint_id"])
-
-            # SNS remains disabled for complaint submission
-            print("SNS notification temporarily disabled")
-
-            return response(201, {
-                "item": item
-            })
-
-        except json.JSONDecodeError:
-            return response(400, {
-                "error": "Invalid JSON"
-            })
-
-        except ClientError as error:
-            print("DynamoDB or S3 operation failed:", error)
-            return response(500, {
-                "error": "Could not save complaint"
-            })
-
-        except Exception as error:
-            print("Unexpected complaint error:", str(error))
-            return response(500, {
-                "error": "Internal server error"
-            })
-
-    # ======================================
+    # --------------------------------------
     # UNKNOWN ROUTE
-    # ======================================
+    # --------------------------------------
 
     return response(404, {
         "error": "Not found"
