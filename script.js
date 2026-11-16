@@ -134,6 +134,7 @@ function configureRoleInterface() {
       ? "ADMINISTRATOR DASHBOARD"
       : "STUDENT PORTAL";
   }
+}
 
   // Update the profile name if the existing profile elements are present.
   const profileName = document.querySelector(
@@ -154,7 +155,7 @@ function configureRoleInterface() {
 
   // Start with the dashboard.
   showView("dashboard");
-}
+  
 
 // ==========================================
 // API RESPONSE HELPERS
