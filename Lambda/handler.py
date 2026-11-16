@@ -4,6 +4,9 @@ import uuid
 import re
 import hashlib
 import secrets
+import hmac
+import base64
+import time
 from datetime import datetime, timezone
 
 import boto3
@@ -18,6 +21,7 @@ TABLE_NAME = os.environ["TABLE_NAME"]
 ALLOWED_ORIGIN = os.environ["ALLOWED_ORIGIN"]
 S3_BUCKET = os.environ["S3_BUCKET"]
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
+AUTH_SECRET = os.environ["AUTH_SECRET"]
 
 dynamodb = boto3.resource("dynamodb")
 
@@ -66,6 +70,66 @@ def hash_password(password):
         + "$"
         + password_hash.hex()
     )
+
+def verify_password(password, stored_hash):
+
+    try:
+        algorithm, iterations, salt_hex, hash_hex = stored_hash.split("$")
+
+        if algorithm != "pbkdf2_sha256":
+            return False
+
+        iterations = int(iterations)
+
+        if iterations != 600000:
+            return False
+
+        salt = bytes.fromhex(salt_hex)
+        expected_hash = bytes.fromhex(hash_hex)
+
+        actual_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt,
+            iterations
+        )
+
+        return hmac.compare_digest(actual_hash, expected_hash)
+
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def generate_login_token(email, role):
+
+    payload = {
+        "sub": email,
+        "role": role,
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 3600
+    }
+
+    payload_json = json.dumps(
+        payload,
+        separators=(",", ":")
+    ).encode("utf-8")
+
+    encoded_payload = base64.urlsafe_b64encode(
+        payload_json
+    ).decode("utf-8").rstrip("=")
+
+    signature = hmac.new(
+        AUTH_SECRET.encode("utf-8"),
+        encoded_payload.encode("utf-8"),
+        hashlib.sha256
+    ).digest()
+
+    encoded_signature = base64.urlsafe_b64encode(
+        signature
+    ).decode("utf-8").rstrip("=")
+
+    return encoded_payload + "." + encoded_signature
+
 
 
 # ==========================================
@@ -297,6 +361,86 @@ def register_user(body):
             "error": "Could not save registration"
         })
 
+# ==========================================
+# USER LOGIN
+# ==========================================
+
+def login_user(body):
+
+    if not isinstance(body, dict):
+        return response(400, {
+            "error": "Invalid request body"
+        })
+
+    email = str(body.get("email", "")).strip().lower()
+    password = body.get("password", "")
+
+    if not email or not password:
+        return response(400, {
+            "error": "Email and password are required"
+        })
+
+    if not isinstance(password, str):
+        return response(400, {
+            "error": "Invalid email or password"
+        })
+
+    try:
+
+        result = users_table.get_item(
+            Key={"email": email}
+        )
+
+        user = result.get("Item")
+
+        # Use the same message for unknown email and wrong password.
+        if not user or not verify_password(
+            password,
+            user.get("password_hash", "")
+        ):
+            return response(401, {
+                "error": "Invalid email or password"
+            })
+
+        # Only active accounts can log in.
+        if user.get("account_status") != "active":
+            return response(403, {
+                "error": "Your account is pending admin approval"
+            })
+
+        role = user.get("requested_role", "student")
+
+        token = generate_login_token(email, role)
+
+        return response(200, {
+            "message": "Login successful",
+            "token": token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "user": {
+                "email": email,
+                "full_name": user.get("full_name", ""),
+                "role": role,
+                "account_status": user.get("account_status", "")
+            }
+        })
+
+    except ClientError as error:
+
+        print("Login DynamoDB error:", error)
+
+        return response(500, {
+            "error": "Unable to process login"
+        })
+
+    except Exception as error:
+
+        print("Login error:", str(error))
+
+        return response(500, {
+            "error": "Internal server error"
+        })
+
 
 # ==========================================
 # LAMBDA HANDLER
@@ -317,6 +461,27 @@ def lambda_handler(event, context):
     # Health check
     if method == "GET" and path == "/health":
         return response(200, {"status": "ok"})
+
+# ======================================
+    # LOGIN USER
+    # ======================================
+
+    if method == "POST" and path == "/login":
+
+        try:
+            body = json.loads(event.get("body") or "{}")
+            return login_user(body)
+
+        except json.JSONDecodeError:
+            return response(400, {
+                "error": "Invalid JSON"
+            })
+
+        except Exception as error:
+            print("Login API error:", str(error))
+            return response(500, {
+                "error": "Internal server error"
+            })
 
     # ======================================
     # REGISTER USER
