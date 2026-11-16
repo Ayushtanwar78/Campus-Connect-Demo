@@ -19,6 +19,7 @@
         <button class="nav-link active" data-view="dashboard"><span class="nav-icon">▦</span> Dashboard</button>
         <button class="nav-link" data-view="report"><span class="nav-icon">＋</span> Report an Issue</button>
         <button class="nav-link" data-view="complaints"><span class="nav-icon">☷</span> My Complaints</button>
+        <button class="nav-link" data-view="admin"><span class="nav-icon">⚙</span> Admin Management</button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -30,7 +31,7 @@
         </div>
         <div class="profile">
           <div class="avatar">AY</div>
-          <div><strong>Student</strong><small>Student account</small></div>
+          <div><strong>Student / Admin</strong><small>Demo account</small></div>
           <span class="profile-dots">•••</span>
         </div>
       </div>
@@ -71,7 +72,7 @@
             <small>Being worked on</small>
           </article>
           <article class="stat-card">
-            <div class="stat-top"><span>Resolved</span><span class="stat-icon green">✓</span></div>
+            <div class="stat-top"><span>Completed</span><span class="stat-icon green">✓</span></div>
             <strong id="resolvedCount">0</strong>
             <small>Successfully completed</small>
           </article>
@@ -160,7 +161,7 @@
               <label class="field full">
                 <span>Attach an image <small>(optional, max 2 MB)</small></span>
                 <input id="attachment" name="attachment" type="file" accept="image/png,image/jpeg">
-                <small class="field-hint" id="fileHint">JPG or PNG only. Image upload is not enabled yet.</small>
+                <small class="field-hint" id="fileHint">JPG or PNG only. Maximum size 2 MB.</small>
               </label>
             </div>
 
@@ -193,7 +194,8 @@
               <option value="All">All statuses</option>
               <option>Pending</option>
               <option>In Progress</option>
-              <option>Resolved</option>
+              <option>Completed</option>
+              <option>Rejected</option>
             </select>
           </div>
 
@@ -203,6 +205,35 @@
             <div class="empty-icon">☷</div>
             <strong>No complaints found</strong>
             <p>Try another filter or submit a new issue.</p>
+          </div>
+        </article>
+      </section>
+
+      <!-- ADMIN MANAGEMENT -->
+      <section class="view" id="adminView">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">ADMINISTRATION</p>
+            <h1>Complaint management</h1>
+            <p class="muted">Review complaints, update their status, and add remarks.</p>
+          </div>
+          <button class="button secondary" id="refreshAdmin">↻ Refresh</button>
+        </div>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>All registered complaints</h2>
+              <p class="muted">Select a status and add remarks before updating.</p>
+            </div>
+          </div>
+
+          <div id="adminComplaints" class="complaint-list"></div>
+
+          <div class="empty-state show" id="adminEmpty">
+            <div class="empty-icon">☷</div>
+            <strong>No complaints available</strong>
+            <p>Registered complaints will appear here.</p>
           </div>
         </article>
       </section>

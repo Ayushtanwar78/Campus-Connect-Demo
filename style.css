@@ -621,3 +621,62 @@ tbody tr:last-child td { border-bottom: 0; }
   .stat-top { font-size: 11px; }
   .complaint-card-top { flex-direction: column; }
 }
+
+/* Admin complaint management */
+.admin-update-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.admin-update-form .field {
+  display: grid;
+  gap: 7px;
+}
+
+.admin-update-form select,
+.admin-update-form textarea {
+  width: 100%;
+}
+
+.admin-update-button {
+  justify-self: start;
+}
+
+.status-history {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.status-history summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.status-history ul {
+  padding-left: 20px;
+}
+
+.status-history li {
+  margin: 12px 0;
+}
+
+.status-history li span {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.status-history li p {
+  margin-top: 5px;
+}
+
+.admin-update-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

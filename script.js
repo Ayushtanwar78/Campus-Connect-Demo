@@ -1,12 +1,13 @@
 const API_BASE = "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
 const DEMO_MODE = false;
 
-const views = ["dashboard", "report", "complaints"];
+const views = ["dashboard", "report", "complaints", "admin"];
 
 const viewTitles = {
   dashboard: "Dashboard",
   report: "Report an Issue",
-  complaints: "My Complaints"
+  complaints: "My Complaints",
+  admin: "Admin Management"
 };
 
 const $ = id => document.getElementById(id);
@@ -44,13 +45,24 @@ function formatDate(value) {
 }
 
 function displayStatus(status) {
-  const value = String(status || "").toLowerCase();
+  const value = String(status || "").toLowerCase().replace(/-/g, "_");
 
   if (value === "submitted" || value === "pending") return "Pending";
   if (value === "in progress" || value === "in_progress") return "In Progress";
-  if (value === "resolved") return "Resolved";
+  if (value === "resolved" || value === "completed") return "Completed";
+  if (value === "rejected") return "Rejected";
 
   return status || "Pending";
+}
+
+function statusValue(status) {
+  const label = displayStatus(status);
+
+  if (label === "In Progress") return "in_progress";
+  if (label === "Completed") return "completed";
+  if (label === "Rejected") return "rejected";
+
+  return "pending";
 }
 
 function statusBadge(status) {
@@ -63,6 +75,7 @@ function statusBadge(status) {
 function normalizeComplaint(item) {
   return {
     complaint_id: item.complaint_id || item.id || "",
+    student_id: item.student_id || "",
     title: item.title || "Untitled Complaint",
     category: item.category || "Other",
     location: item.location || "Not specified",
@@ -70,6 +83,10 @@ function normalizeComplaint(item) {
     priority: String(item.priority || "medium").toLowerCase(),
     status: item.status || "submitted",
     created_at: item.created_at || item.createdAt || "",
+    updated_at: item.updated_at || "",
+    resolved_at: item.resolved_at || "",
+    admin_remarks: item.admin_remarks || "",
+    status_history: Array.isArray(item.status_history) ? item.status_history : [],
     attachment_key: item.attachment_key || ""
   };
 }
@@ -96,7 +113,6 @@ function extractComplaints(data) {
   return [];
 }
 
-/* Unwrap Lambda response body when necessary */
 function unwrapApiData(data) {
   if (!data || !data.body) return data || {};
 
@@ -110,7 +126,6 @@ function unwrapApiData(data) {
   }
 }
 
-/* API request helper */
 async function apiRequest(path, options = {}) {
   const base = API_BASE.endsWith("/") ? API_BASE : API_BASE + "/";
 
@@ -136,7 +151,7 @@ async function apiRequest(path, options = {}) {
   return result;
 }
 
-/* Upload selected image to S3 using a temporary URL */
+/* Upload image to S3 */
 async function uploadAttachment(file) {
   if (!file) return "";
 
@@ -150,7 +165,6 @@ async function uploadAttachment(file) {
 
   showToast("Preparing image upload...");
 
-  /* Step 1: Request a presigned upload URL from Lambda */
   const uploadData = await apiRequest("upload-url", {
     method: "POST",
     headers: {
@@ -169,7 +183,6 @@ async function uploadAttachment(file) {
     throw new Error("Lambda did not return a valid upload URL.");
   }
 
-  /* Step 2: Upload the actual image directly to S3 */
   showToast("Uploading image...");
 
   const uploadResponse = await fetch(uploadUrl, {
@@ -181,15 +194,13 @@ async function uploadAttachment(file) {
   });
 
   if (!uploadResponse.ok) {
-    throw new Error(
-      `S3 image upload failed (${uploadResponse.status}).`
-    );
+    throw new Error(`S3 image upload failed (${uploadResponse.status}).`);
   }
 
   return attachmentKey;
 }
 
-/* Load complaints from AWS */
+/* Load complaints */
 async function loadComplaints() {
   let records = [];
 
@@ -206,30 +217,21 @@ async function loadComplaints() {
   render();
 }
 
-/* Dashboard and complaints rendering */
+/* Dashboard rendering */
 function render() {
   const items = [...complaintsCache].sort((a, b) => {
     return new Date(b.created_at || 0) - new Date(a.created_at || 0);
   });
 
-  const pending = items.filter(
-    x => displayStatus(x.status) === "Pending"
-  ).length;
-
-  const progress = items.filter(
-    x => displayStatus(x.status) === "In Progress"
-  ).length;
-
-  const resolved = items.filter(
-    x => displayStatus(x.status) === "Resolved"
-  ).length;
+  const pending = items.filter(x => displayStatus(x.status) === "Pending").length;
+  const progress = items.filter(x => displayStatus(x.status) === "In Progress").length;
+  const completed = items.filter(x => displayStatus(x.status) === "Completed").length;
 
   if ($("totalCount")) $("totalCount").textContent = items.length;
   if ($("pendingCount")) $("pendingCount").textContent = pending;
   if ($("progressCount")) $("progressCount").textContent = progress;
-  if ($("resolvedCount")) $("resolvedCount").textContent = resolved;
+  if ($("resolvedCount")) $("resolvedCount").textContent = completed;
 
-  /* Recent complaints table */
   if ($("recentRows")) {
     $("recentRows").innerHTML = items.slice(0, 5).map(item => `
       <tr>
@@ -248,27 +250,19 @@ function render() {
     $("recentEmpty").classList.toggle("show", items.length === 0);
   }
 
-  /* Status filtering */
-  const filter = $("statusFilter")
-    ? $("statusFilter").value
-    : "All";
+  const filter = $("statusFilter") ? $("statusFilter").value : "All";
 
   const filtered = filter === "All"
     ? items
-    : items.filter(
-        item => displayStatus(item.status) === filter
-      );
+    : items.filter(item => displayStatus(item.status) === filter);
 
-  /* Individual complaint cards */
   if ($("allComplaints")) {
     $("allComplaints").innerHTML = filtered.map(item => `
       <article class="complaint-card">
         <div class="complaint-card-top">
           <div class="complaint-card-heading">
             <h3>${escapeHTML(item.title)}</h3>
-            <span class="complaint-id">
-              ID: ${escapeHTML(item.complaint_id || "—")}
-            </span>
+            <span class="complaint-id">ID: ${escapeHTML(item.complaint_id || "—")}</span>
           </div>
           ${statusBadge(item.status)}
         </div>
@@ -278,17 +272,14 @@ function render() {
             <span class="detail-label">Category</span>
             <strong>${escapeHTML(item.category)}</strong>
           </div>
-
           <div class="complaint-detail">
             <span class="detail-label">Location</span>
             <strong>${escapeHTML(item.location)}</strong>
           </div>
-
           <div class="complaint-detail">
             <span class="detail-label">Date submitted</span>
             <strong>${formatDate(item.created_at)}</strong>
           </div>
-
           <div class="complaint-detail">
             <span class="detail-label">Priority</span>
             <strong class="priority ${escapeHTML(item.priority)}">
@@ -308,6 +299,13 @@ function render() {
             <strong>Image uploaded</strong>
           </div>
         ` : ""}
+
+        ${item.admin_remarks ? `
+          <div class="complaint-description">
+            <span class="detail-label">Latest admin remarks</span>
+            <p>${escapeHTML(item.admin_remarks)}</p>
+          </div>
+        ` : ""}
       </article>
     `).join("");
   }
@@ -315,6 +313,161 @@ function render() {
   if ($("allEmpty")) {
     $("allEmpty").classList.toggle("show", filtered.length === 0);
   }
+
+  renderAdminComplaints(items);
+}
+
+/* Admin complaint management */
+function renderAdminComplaints(items) {
+  const container = $("adminComplaints");
+  if (!container) return;
+
+  container.innerHTML = items.map(item => {
+    const selectedStatus = statusValue(item.status);
+
+    return `
+      <article class="complaint-card admin-card">
+        <div class="complaint-card-top">
+          <div class="complaint-card-heading">
+            <h3>${escapeHTML(item.title)}</h3>
+            <span class="complaint-id">
+              ID: ${escapeHTML(item.complaint_id)}
+            </span>
+          </div>
+          ${statusBadge(item.status)}
+        </div>
+
+        <div class="complaint-details">
+          <div class="complaint-detail">
+            <span class="detail-label">Student ID</span>
+            <strong>${escapeHTML(item.student_id || "—")}</strong>
+          </div>
+          <div class="complaint-detail">
+            <span class="detail-label">Category</span>
+            <strong>${escapeHTML(item.category)}</strong>
+          </div>
+          <div class="complaint-detail">
+            <span class="detail-label">Location</span>
+            <strong>${escapeHTML(item.location)}</strong>
+          </div>
+          <div class="complaint-detail">
+            <span class="detail-label">Priority</span>
+            <strong class="priority ${escapeHTML(item.priority)}">
+              ${escapeHTML(item.priority.toUpperCase())}
+            </strong>
+          </div>
+        </div>
+
+        <div class="complaint-description">
+          <span class="detail-label">Description</span>
+          <p>${escapeHTML(item.description)}</p>
+        </div>
+
+        ${item.attachment_key ? `
+          <div class="complaint-attachment">
+            <span class="detail-label">Attachment</span>
+            <strong>Image uploaded</strong>
+          </div>
+        ` : ""}
+
+        <div class="admin-update-form">
+          <label class="field">
+            <span>Update complaint status</span>
+            <select class="admin-status" data-id="${escapeHTML(item.complaint_id)}">
+              <option value="pending" ${selectedStatus === "pending" ? "selected" : ""}>Pending</option>
+              <option value="in_progress" ${selectedStatus === "in_progress" ? "selected" : ""}>In Progress</option>
+              <option value="completed" ${selectedStatus === "completed" ? "selected" : ""}>Completed</option>
+              <option value="rejected" ${selectedStatus === "rejected" ? "selected" : ""}>Rejected</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Admin remarks</span>
+            <textarea class="admin-remarks" data-id="${escapeHTML(item.complaint_id)}"
+              rows="2" maxlength="1000"
+              placeholder="Write an update or resolution note...">${escapeHTML(item.admin_remarks)}</textarea>
+          </label>
+
+          <button class="button primary admin-update-button"
+            data-id="${escapeHTML(item.complaint_id)}">
+            Update Status
+          </button>
+        </div>
+
+        ${item.status_history.length ? `
+          <details class="status-history">
+            <summary>View status history (${item.status_history.length})</summary>
+            <ul>
+              ${item.status_history.map(entry => `
+                <li>
+                  <strong>${escapeHTML(displayStatus(entry.status))}</strong>
+                  <span>${formatDate(entry.changed_at)}</span>
+                  ${entry.remarks ? `<p>${escapeHTML(entry.remarks)}</p>` : ""}
+                </li>
+              `).join("")}
+            </ul>
+          </details>
+        ` : ""}
+      </article>
+    `;
+  }).join("");
+
+  if ($("adminEmpty")) {
+    $("adminEmpty").classList.toggle("show", items.length === 0);
+  }
+}
+
+/* Save status changes */
+if ($("adminComplaints")) {
+  $("adminComplaints").addEventListener("click", async event => {
+    const button = event.target.closest(".admin-update-button");
+    if (!button) return;
+
+    const complaintId = button.dataset.id;
+
+    const statusSelect = $("adminComplaints").querySelector(
+      `.admin-status[data-id="${CSS.escape(complaintId)}"]`
+    );
+
+    const remarksInput = $("adminComplaints").querySelector(
+      `.admin-remarks[data-id="${CSS.escape(complaintId)}"]`
+    );
+
+    if (!statusSelect) {
+      showToast("Could not find the selected complaint.");
+      return;
+    }
+
+    const status = statusSelect.value;
+    const adminRemarks = remarksInput ? remarksInput.value.trim() : "";
+
+    button.disabled = true;
+    button.textContent = "Updating...";
+
+    try {
+      await apiRequest("update-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          complaint_id: complaintId,
+          status: status,
+          admin_remarks: adminRemarks
+        })
+      });
+
+      showToast("Complaint status updated successfully!");
+
+      await loadComplaints();
+
+    } catch (error) {
+      console.error("Status update failed:", error);
+      showToast("Status update failed: " + error.message);
+      button.disabled = false;
+      button.textContent = "Update Status";
+    }
+  });
 }
 
 /* Navigation */
@@ -329,10 +482,7 @@ function showView(name) {
   });
 
   document.querySelectorAll(".nav-link").forEach(button => {
-    button.classList.toggle(
-      "active",
-      button.dataset.view === name
-    );
+    button.classList.toggle("active", button.dataset.view === name);
   });
 
   if ($("breadcrumbTitle")) {
@@ -343,7 +493,7 @@ function showView(name) {
     $("sidebar").classList.remove("open");
   }
 
-  if (name === "dashboard" || name === "complaints") {
+  if (name === "dashboard" || name === "complaints" || name === "admin") {
     refreshData();
   }
 }
@@ -373,9 +523,14 @@ if ($("menuToggle")) {
   });
 }
 
-/* Filter */
+/* Complaint filter */
 if ($("statusFilter")) {
   $("statusFilter").addEventListener("change", render);
+}
+
+/* Admin refresh */
+if ($("refreshAdmin")) {
+  $("refreshAdmin").addEventListener("click", refreshData);
 }
 
 /* Image validation */
@@ -385,8 +540,7 @@ if ($("attachment")) {
 
     if (!file) {
       if ($("fileHint")) {
-        $("fileHint").textContent =
-          "JPG or PNG only. Maximum size 2 MB.";
+        $("fileHint").textContent = "JPG or PNG only. Maximum size 2 MB.";
       }
       return;
     }
@@ -398,16 +552,12 @@ if ($("attachment")) {
       event.target.value = "";
 
       if ($("fileHint")) {
-        $("fileHint").textContent =
-          "Choose a JPG or PNG file up to 2 MB.";
+        $("fileHint").textContent = "Choose a JPG or PNG file up to 2 MB.";
       }
 
       showToast("Choose a JPG or PNG file up to 2 MB.");
-    } else {
-      if ($("fileHint")) {
-        $("fileHint").textContent =
-          `${file.name} selected. Ready to upload.`;
-      }
+    } else if ($("fileHint")) {
+      $("fileHint").textContent = `${file.name} selected. Ready to upload.`;
     }
   });
 }
@@ -418,7 +568,6 @@ if ($("complaintForm")) {
     event.preventDefault();
 
     const form = event.currentTarget;
-
     if (!form.reportValidity()) return;
 
     const formData = new FormData(form);
@@ -472,13 +621,10 @@ if ($("complaintForm")) {
     }
 
     try {
-      /* Upload image first, if the user selected one */
       if (selectedFile) {
-        payload.attachment_key =
-          await uploadAttachment(selectedFile);
+        payload.attachment_key = await uploadAttachment(selectedFile);
       }
 
-      /* Submit complaint with the S3 object key */
       showToast("Submitting complaint...");
 
       await apiRequest("complaints", {
@@ -492,8 +638,7 @@ if ($("complaintForm")) {
       form.reset();
 
       if ($("fileHint")) {
-        $("fileHint").textContent =
-          "JPG or PNG only. Maximum size 2 MB.";
+        $("fileHint").textContent = "JPG or PNG only. Maximum size 2 MB.";
       }
 
       await loadComplaints();
