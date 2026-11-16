@@ -37,8 +37,6 @@
       border: 1px solid #e9edf4;
     }
 
-    /* Brand */
-
     .brand {
       text-align: center;
       margin-bottom: 32px;
@@ -74,8 +72,6 @@
       margin-top: 8px;
     }
 
-    /* Heading */
-
     .heading {
       margin-bottom: 25px;
     }
@@ -89,8 +85,6 @@
       font-size: 13px;
       color: #7b8496;
     }
-
-    /* Form */
 
     .form-group {
       margin-bottom: 20px;
@@ -121,8 +115,6 @@
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
 
-    /* Password */
-
     .password-wrapper {
       position: relative;
     }
@@ -144,8 +136,6 @@
       cursor: pointer;
     }
 
-    /* Login Button */
-
     .login-btn {
       width: 100%;
       padding: 14px;
@@ -164,7 +154,11 @@
       transform: translateY(-1px);
     }
 
-    /* Message */
+    .login-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
 
     .message {
       display: none;
@@ -174,8 +168,6 @@
       margin-top: 15px;
       line-height: 1.5;
     }
-
-    /* Register */
 
     .register-link {
       text-align: center;
@@ -194,16 +186,12 @@
       text-decoration: underline;
     }
 
-    /* Footer */
-
     .footer {
       text-align: center;
       color: #a0a7b4;
       font-size: 11px;
       margin-top: 28px;
     }
-
-    /* Mobile */
 
     @media (max-width: 480px) {
       .login-container {
@@ -217,28 +205,21 @@
 
   <div class="login-container">
 
-    <!-- Brand -->
     <div class="brand">
       <div class="brand-icon">C</div>
-
       <h1>Campus<span>Connect</span></h1>
-
       <p>Student Complaint Management System</p>
     </div>
 
-    <!-- Heading -->
     <div class="heading">
       <h2>Welcome Back</h2>
       <p>Sign in using your registered email address.</p>
     </div>
 
-    <!-- Login Form -->
     <form id="loginForm">
 
-      <!-- Email -->
       <div class="form-group">
         <label for="email">Email Address</label>
-
         <input
           type="email"
           id="email"
@@ -248,7 +229,6 @@
         >
       </div>
 
-      <!-- Password -->
       <div class="form-group">
         <label for="password">Password</label>
 
@@ -271,22 +251,19 @@
         </div>
       </div>
 
-      <!-- Sign In -->
-      <button type="submit" class="login-btn">
+      <button type="submit" class="login-btn" id="loginBtn">
         Sign In
       </button>
 
-      <div class="message" id="message" role="status"></div>
+      <div class="message" id="message" role="status" aria-live="polite"></div>
 
     </form>
 
-    <!-- Registration Link -->
     <div class="register-link">
       Don't have an account?
       <a href="register.html">Create Account</a>
     </div>
 
-    <!-- Footer -->
     <div class="footer">
       © 2026 CampusConnect. All rights reserved.
     </div>
@@ -295,48 +272,163 @@
 
   <script>
 
-    // Show / Hide Password
-    const password = document.getElementById("password");
+    // =====================================
+    // AWS LAMBDA API CONFIGURATION
+    // =====================================
 
-    const togglePassword =
-      document.getElementById("togglePassword");
+    const API_BASE =
+      "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws";
+
+
+    // =====================================
+    // SHOW / HIDE PASSWORD
+    // =====================================
+
+    const passwordInput = document.getElementById("password");
+    const togglePassword = document.getElementById("togglePassword");
 
     togglePassword.addEventListener("click", function () {
 
-      const isHidden = password.type === "password";
+      const isHidden = passwordInput.type === "password";
 
-      password.type = isHidden ? "text" : "password";
+      passwordInput.type = isHidden ? "text" : "password";
 
-      togglePassword.textContent =
-        isHidden ? "Hide" : "Show";
+      togglePassword.textContent = isHidden ? "Hide" : "Show";
 
     });
 
 
-    // Login Form
+    // =====================================
+    // LOGIN MESSAGE
+    // =====================================
+
     const loginForm = document.getElementById("loginForm");
-
     const message = document.getElementById("message");
+    const loginBtn = document.getElementById("loginBtn");
 
-    loginForm.addEventListener("submit", function (event) {
+    function showMessage(text, type) {
+
+      message.style.display = "block";
+      message.textContent = text;
+
+      if (type === "success") {
+        message.style.background = "#eafaf0";
+        message.style.color = "#18743b";
+      }
+
+      else if (type === "error") {
+        message.style.background = "#fff0f0";
+        message.style.color = "#c62828";
+      }
+
+      else {
+        message.style.background = "#fff7e6";
+        message.style.color = "#946200";
+      }
+    }
+
+
+    // =====================================
+    // LOGIN API INTEGRATION
+    // =====================================
+
+    loginForm.addEventListener("submit", async function (event) {
 
       event.preventDefault();
 
-      const email =
-        document.getElementById("email").value.trim();
+      const email = document.getElementById("email").value.trim().toLowerCase();
+      const password = passwordInput.value;
 
-      const passwordValue = password.value;
-
-      if (!email || !passwordValue) {
+      if (!email || !password) {
+        showMessage("Please enter your email and password.", "error");
         return;
       }
 
-      message.style.display = "block";
-      message.style.background = "#fff7e6";
-      message.style.color = "#946200";
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Signing In...";
 
-      message.textContent =
-        "Login interface is ready. Connect Amazon Cognito to authenticate your account and retrieve your registered role.";
+      message.style.display = "none";
+
+      try {
+
+        const apiResponse = await fetch(`${API_BASE}/login`, {
+
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            email: email,
+            password: password
+          })
+
+        });
+
+        const result = await apiResponse.json();
+
+        if (!apiResponse.ok) {
+
+          if (apiResponse.status === 401) {
+            throw new Error("Invalid email or password.");
+          }
+
+          if (apiResponse.status === 403) {
+            throw new Error("Your account is pending admin approval.");
+          }
+
+          throw new Error(
+            result.error || "Login failed. Please try again."
+          );
+
+        }
+
+        if (!result.token || !result.user) {
+          throw new Error("Invalid login response from server.");
+        }
+
+        // Store login information for this browser session.
+        sessionStorage.setItem("campusToken", result.token);
+
+        sessionStorage.setItem(
+          "campusUser",
+          JSON.stringify(result.user)
+        );
+
+        sessionStorage.setItem(
+          "campusTokenExpiry",
+          String(Date.now() + (result.expires_in * 1000))
+        );
+
+        showMessage(
+          "Login successful! Redirecting to CampusConnect...",
+          "success"
+        );
+
+        loginBtn.textContent = "Login Successful";
+
+        // Current destination: main project page.
+        // Role-specific dashboard routing can be added later.
+        setTimeout(function () {
+          window.location.href = "index.html";
+        }, 1000);
+
+      }
+
+      catch (error) {
+
+        console.error("Login error:", error);
+
+        showMessage(
+          error.message || "Unable to connect to the server. Please try again.",
+          "error"
+        );
+
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Sign In";
+
+      }
 
     });
 
