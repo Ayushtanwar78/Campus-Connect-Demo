@@ -113,6 +113,7 @@ function statusBadge(status) {
 // ==========================================
 
 function configureRoleInterface() {
+  // Control sidebar menu visibility based on user role.
   document.querySelectorAll("[data-view], [data-go]").forEach(element => {
     const view = element.dataset.view || element.dataset.go;
 
@@ -124,19 +125,24 @@ function configureRoleInterface() {
     element.hidden = !allowed;
   });
 
+  // Control Admin Management panel.
   const adminPanel = document.getElementById("adminView");
-  if (adminPanel) adminPanel.hidden = !isAdmin;
+  if (adminPanel) {
+    adminPanel.hidden = !isAdmin;
+  }
 
+  // Control student-only panels.
   const reportPanel = document.getElementById("reportView");
-  if (reportPanel) reportPanel.hidden = !isStudent;
+  if (reportPanel) {
+    reportPanel.hidden = !isStudent;
+  }
 
   const complaintsPanel = document.getElementById("complaintsView");
-  if (complaintsPanel) complaintsPanel.hidden = !isStudent;
+  if (complaintsPanel) {
+    complaintsPanel.hidden = !isStudent;
+  }
 
-  showView("dashboard");
-}
-
-  // Show the correct dashboard heading.
+  // Display the correct dashboard heading.
   const dashboardHeading = document.querySelector(
     "#dashboardView h1, #dashboardView h2"
   );
@@ -144,8 +150,12 @@ function configureRoleInterface() {
   if (dashboardHeading) {
     dashboardHeading.textContent = isAdmin
       ? "ADMINISTRATOR DASHBOARD"
-      : "STUDENT PORTAL";
+      : "STUDENT DASHBOARD";
   }
+
+  // Open the dashboard after applying role permissions.
+  showView("dashboard");
+}
 
 
   // Update the profile name if the existing profile elements are present.
