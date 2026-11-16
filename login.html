@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusConnect | Login</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #f4f7fb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #172033;
+    }
+
+    .login-container {
+      width: 100%;
+      max-width: 420px;
+      background: #ffffff;
+      padding: 40px 35px;
+      border-radius: 18px;
+      box-shadow: 0 12px 45px rgba(20, 35, 65, 0.08);
+      border: 1px solid #e9edf4;
+    }
+
+    /* Brand */
+
+    .brand {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      background: #eaf1ff;
+      color: #2563eb;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 25px;
+      font-weight: 800;
+      margin: 0 auto 15px;
+    }
+
+    .brand h1 {
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+    }
+
+    .brand h1 span {
+      color: #2563eb;
+    }
+
+    .brand p {
+      color: #7b8496;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    /* Heading */
+
+    .heading {
+      margin-bottom: 25px;
+    }
+
+    .heading h2 {
+      font-size: 21px;
+      margin-bottom: 7px;
+    }
+
+    .heading p {
+      font-size: 13px;
+      color: #7b8496;
+    }
+
+    /* Form */
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #374151;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px 14px;
+      border: 1px solid #dce2eb;
+      border-radius: 9px;
+      font-size: 14px;
+      outline: none;
+      background: #ffffff;
+      color: #172033;
+      transition: 0.2s;
+    }
+
+    input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    /* Password */
+
+    .password-wrapper {
+      position: relative;
+    }
+
+    .password-wrapper input {
+      padding-right: 65px;
+    }
+
+    .toggle-password {
+      position: absolute;
+      right: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Login Button */
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 9px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .login-btn:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+
+    /* Message */
+
+    .message {
+      display: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-top: 15px;
+      line-height: 1.5;
+    }
+
+    /* Register */
+
+    .register-link {
+      text-align: center;
+      margin-top: 25px;
+      color: #7b8496;
+      font-size: 13px;
+    }
+
+    a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Footer */
+
+    .footer {
+      text-align: center;
+      color: #a0a7b4;
+      font-size: 11px;
+      margin-top: 28px;
+    }
+
+    /* Mobile */
+
+    @media (max-width: 480px) {
+      .login-container {
+        padding: 32px 23px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="login-container">
+
+    <!-- Brand -->
+    <div class="brand">
+      <div class="brand-icon">C</div>
+
+      <h1>Campus<span>Connect</span></h1>
+
+      <p>Student Complaint Management System</p>
+    </div>
+
+    <!-- Heading -->
+    <div class="heading">
+      <h2>Welcome Back</h2>
+      <p>Sign in using your registered email address.</p>
+    </div>
+
+    <!-- Login Form -->
+    <form id="loginForm">
+
+      <!-- Email -->
+      <div class="form-group">
+        <label for="email">Email Address</label>
+
+        <input
+          type="email"
+          id="email"
+          placeholder="Enter your registered email"
+          autocomplete="username"
+          required
+        >
+      </div>
+
+      <!-- Password -->
+      <div class="form-group">
+        <label for="password">Password</label>
+
+        <div class="password-wrapper">
+          <input
+            type="password"
+            id="password"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+            required
+          >
+
+          <button
+            type="button"
+            class="toggle-password"
+            id="togglePassword"
+          >
+            Show
+          </button>
+        </div>
+      </div>
+
+      <!-- Sign In -->
+      <button type="submit" class="login-btn">
+        Sign In
+      </button>
+
+      <div class="message" id="message" role="status"></div>
+
+    </form>
+
+    <!-- Registration Link -->
+    <div class="register-link">
+      Don't have an account?
+      <a href="register.html">Create Account</a>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      © 2026 CampusConnect. All rights reserved.
+    </div>
+
+  </div>
+
+  <script>
+
+    // Show / Hide Password
+    const password = document.getElementById("password");
+
+    const togglePassword =
+      document.getElementById("togglePassword");
+
+    togglePassword.addEventListener("click", function () {
+
+      const isHidden = password.type === "password";
+
+      password.type = isHidden ? "text" : "password";
+
+      togglePassword.textContent =
+        isHidden ? "Hide" : "Show";
+
+    });
+
+
+    // Login Form
+    const loginForm = document.getElementById("loginForm");
+
+    const message = document.getElementById("message");
+
+    loginForm.addEventListener("submit", function (event) {
+
+      event.preventDefault();
+
+      const email =
+        document.getElementById("email").value.trim();
+
+      const passwordValue = password.value;
+
+      if (!email || !passwordValue) {
+        return;
+      }
+
+      message.style.display = "block";
+      message.style.background = "#fff7e6";
+      message.style.color = "#946200";
+
+      message.textContent =
+        "Login interface is ready. Connect Amazon Cognito to authenticate your account and retrieve your registered role.";
+
+    });
+
+  </script>
+
+</body>
+</html>

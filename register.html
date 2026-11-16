@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusConnect | Registration</title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #f3f6fc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 25px 15px;
+      color: #1e293b;
+    }
+
+    .register-container {
+      width: 100%;
+      max-width: 650px;
+      background: white;
+      padding: 35px;
+      border-radius: 16px;
+      box-shadow: 0 8px 35px rgba(0,0,0,0.08);
+    }
+
+    .brand {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .brand h1 {
+      color: #2563eb;
+      font-size: 29px;
+      margin-bottom: 8px;
+    }
+
+    .brand p {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .form-title {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 25px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 17px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid #dbe2ea;
+      border-radius: 8px;
+      outline: none;
+      font-size: 14px;
+      background: white;
+    }
+
+    input:focus, select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+    }
+
+    .role-section {
+      margin-top: 8px;
+      padding: 20px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+    }
+
+    .role-section h3 {
+      font-size: 17px;
+      margin-bottom: 18px;
+    }
+
+    .notice {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 10px;
+      background: #fff7ed;
+      color: #9a3412;
+      border: 1px solid #fed7aa;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #2563eb;
+      border: none;
+      color: white;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 22px;
+    }
+
+    .submit-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .submit-btn:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    .login-link {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    .login-link a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    #message {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media(max-width:550px) {
+      .register-container {
+        padding: 23px 18px;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="register-container">
+
+  <div class="brand">
+    <h1>CampusConnect</h1>
+    <p>Student Complaint Management System</p>
+  </div>
+
+  <h2 class="form-title">Create Your Account</h2>
+
+  <form id="registerForm">
+
+    <div class="form-group">
+      <label for="name">Full Name</label>
+      <input type="text" id="name"
+        placeholder="Enter your full name" required>
+    </div>
+
+    <div class="form-grid">
+
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email"
+          placeholder="Enter your email" required>
+      </div>
+
+      <div class="form-group">
+        <label for="mobile">Mobile Number</label>
+        <input type="tel" id="mobile"
+          placeholder="10-digit mobile number"
+          pattern="[0-9]{10}" maxlength="10" required>
+      </div>
+
+    </div>
+
+    <div class="form-group">
+      <label for="role">Select Your Role</label>
+      <select id="role" required>
+        <option value="student">Student</option>
+        <option value="analyst">Analyst</option>
+        <option value="admin">Administrator</option>
+      </select>
+    </div>
+
+    <!-- Student Details -->
+    <div id="studentFields" class="role-section">
+
+      <h3>Student Details</h3>
+
+      <div class="form-group">
+        <label for="studentId">Student ID / Roll Number</label>
+        <input type="text" id="studentId"
+          placeholder="Enter your roll number">
+      </div>
+
+      <div class="form-grid">
+
+        <div class="form-group">
+          <label for="course">Course</label>
+          <select id="course">
+            <option value="">Select Course</option>
+            <option>B.Tech</option>
+            <option>BCA</option>
+            <option>MCA</option>
+            <option>MBA</option>
+            <option>BBA</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="semester">Semester</label>
+          <select id="semester">
+            <option value="">Select Semester</option>
+            <option>1st Semester</option>
+            <option>2nd Semester</option>
+            <option>3rd Semester</option>
+            <option>4th Semester</option>
+            <option>5th Semester</option>
+            <option>6th Semester</option>
+            <option>7th Semester</option>
+            <option>8th Semester</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="form-group">
+        <label for="studentDepartment">Department</label>
+        <select id="studentDepartment">
+          <option value="">Select Department</option>
+          <option>Computer Science</option>
+          <option>Electronics</option>
+          <option>Mechanical</option>
+          <option>Civil</option>
+          <option>Management</option>
+          <option>Other</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- Analyst Details -->
+    <div id="analystFields" class="role-section hidden">
+
+      <h3>Analyst Details</h3>
+
+      <div class="form-group">
+        <label for="analystId">Employee ID</label>
+        <input type="text" id="analystId"
+          placeholder="Enter employee ID">
+      </div>
+
+      <div class="form-group">
+        <label for="analystDepartment">Department</label>
+        <select id="analystDepartment">
+          <option value="">Select Department</option>
+          <option>Computer Science</option>
+          <option>Electronics</option>
+          <option>Mechanical</option>
+          <option>Civil</option>
+          <option>Management</option>
+          <option>Administration</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="analystDesignation">Designation</label>
+        <input type="text" id="analystDesignation"
+          placeholder="Enter designation">
+      </div>
+
+      <div class="notice">
+        Analyst registration requires verification and approval.
+      </div>
+
+    </div>
+
+    <!-- Admin Details -->
+    <div id="adminFields" class="role-section hidden">
+
+      <h3>Administrator Details</h3>
+
+      <div class="form-group">
+        <label for="adminId">Employee ID</label>
+        <input type="text" id="adminId"
+          placeholder="Enter employee ID">
+      </div>
+
+      <div class="form-group">
+        <label for="adminDepartment">Department</label>
+        <select id="adminDepartment">
+          <option value="">Select Department</option>
+          <option>Computer Science</option>
+          <option>Electronics</option>
+          <option>Mechanical</option>
+          <option>Civil</option>
+          <option>Management</option>
+          <option>Administration</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="adminDesignation">Designation</label>
+        <input type="text" id="adminDesignation"
+          placeholder="Enter designation">
+      </div>
+
+      <div class="notice">
+        Administrator registration requires approval from an
+        existing authorized administrator.
+      </div>
+
+    </div>
+
+    <button type="submit" class="submit-btn" id="registerBtn">
+      Register Now
+    </button>
+
+    <p id="message" role="status" aria-live="polite"></p>
+
+  </form>
+
+  <div class="login-link">
+    Already registered?
+    <a href="login.html">Login Here</a>
+  </div>
+
+</div>
+
+<script>
+
+  // AWS Lambda Registration API
+  const API_URL =
+    "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
+
+  const roleSelect = document.getElementById("role");
+
+  const sections = {
+    student: document.getElementById("studentFields"),
+    analyst: document.getElementById("analystFields"),
+    admin: document.getElementById("adminFields")
+  };
+
+  const form = document.getElementById("registerForm");
+  const message = document.getElementById("message");
+  const registerBtn = document.getElementById("registerBtn");
+
+  // Show fields according to selected role
+  function updateRoleFields() {
+
+    const selectedRole = roleSelect.value;
+
+    Object.entries(sections).forEach(([role, section]) => {
+
+      const visible = role === selectedRole;
+
+      section.classList.toggle("hidden", !visible);
+
+      section.querySelectorAll("input, select").forEach(field => {
+        field.required = visible;
+      });
+
+    });
+
+  }
+
+  roleSelect.addEventListener("change", updateRoleFields);
+
+  updateRoleFields();
+
+  // Registration form submission
+  form.addEventListener("submit", async function(event) {
+
+    event.preventDefault();
+
+    message.style.color = "#b45309";
+    message.textContent = "Submitting your registration...";
+
+    registerBtn.disabled = true;
+    registerBtn.textContent = "Please wait...";
+
+    const selectedRole = roleSelect.value;
+
+    // Map HTML role value to Lambda role value
+    const apiRole =
+      selectedRole === "admin" ? "administrator" : selectedRole;
+
+    // Common registration details
+    const userData = {
+      full_name: document.getElementById("name").value.trim(),
+      email: document.getElementById("email").value.trim().toLowerCase(),
+      mobile: document.getElementById("mobile").value.trim(),
+      role: apiRole
+    };
+
+    // Add student details
+    if (selectedRole === "student") {
+
+      userData.roll_number =
+        document.getElementById("studentId").value.trim();
+
+      userData.course =
+        document.getElementById("course").value;
+
+      userData.semester =
+        document.getElementById("semester").value;
+
+      userData.department =
+        document.getElementById("studentDepartment").value;
+
+    }
+
+    // Add analyst details
+    if (selectedRole === "analyst") {
+
+      userData.employee_id =
+        document.getElementById("analystId").value.trim();
+
+      userData.department =
+        document.getElementById("analystDepartment").value;
+
+      userData.designation =
+        document.getElementById("analystDesignation").value.trim();
+
+    }
+
+    // Add administrator details
+    if (selectedRole === "admin") {
+
+      userData.employee_id =
+        document.getElementById("adminId").value.trim();
+
+      userData.department =
+        document.getElementById("adminDepartment").value;
+
+      userData.designation =
+        document.getElementById("adminDesignation").value.trim();
+
+    }
+
+    try {
+
+      const response = await fetch(API_URL + "register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(userData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || result.error ||
+          "Registration failed. Please try again."
+        );
+      }
+
+      message.style.color = "#15803d";
+
+      message.textContent =
+        result.message ||
+        "Registration submitted successfully. Your account is pending approval.";
+
+      form.reset();
+      updateRoleFields();
+
+    } catch (error) {
+
+      console.error("Registration error:", error);
+
+      message.style.color = "#dc2626";
+
+      if (error instanceof TypeError) {
+        message.textContent =
+          "Unable to connect to the server. Please check your internet connection or API CORS settings.";
+      } else {
+        message.textContent = error.message;
+      }
+
+    } finally {
+
+      registerBtn.disabled = false;
+      registerBtn.textContent = "Register Now";
+
+    }
+
+  });
+
+</script>
+
+</body>
+</html>

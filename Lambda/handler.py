@@ -7,15 +7,31 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
+
+# ==========================================
+# AWS CONFIGURATION
+# ==========================================
+
 TABLE_NAME = os.environ["TABLE_NAME"]
 ALLOWED_ORIGIN = os.environ["ALLOWED_ORIGIN"]
 S3_BUCKET = os.environ["S3_BUCKET"]
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
 
-table = boto3.resource("dynamodb").Table(TABLE_NAME)
+dynamodb = boto3.resource("dynamodb")
+
+# Complaints table
+table = dynamodb.Table(TABLE_NAME)
+
+# Users table
+users_table = dynamodb.Table("CampusUsersData")
+
 s3 = boto3.client("s3")
 sns = boto3.client("sns")
 
+
+# ==========================================
+# COMMON RESPONSE
+# ==========================================
 
 def response(status_code, body):
     return {
@@ -23,12 +39,15 @@ def response(status_code, body):
         "headers": {
             "Content-Type": "application/json"
         },
-        "body": json.dumps(body, default=str),
+        "body": json.dumps(body, default=str)
     }
 
 
+# ==========================================
+# SNS NOTIFICATION
+# ==========================================
+
 def send_new_complaint_notification(item):
-    """SNS notification function retained for future use."""
 
     if not SNS_TOPIC_ARN:
         print("SNS_TOPIC_ARN is not configured")
@@ -47,7 +66,7 @@ Date: {item['created_at']}
 
 Image attached: {"Yes" if item.get("attachment_key") else "No"}
 
-Please log in to the CampusConnect dashboard to review this complaint.
+Please log in to the CampusConnect dashboard.
 """
 
     try:
@@ -59,11 +78,145 @@ Please log in to the CampusConnect dashboard to review this complaint.
         print("SNS notification published successfully")
 
     except ClientError as error:
-        print("SNS notification failed:", error.response["Error"]["Code"])
+        print("SNS notification failed:", error)
 
     except Exception as error:
-        print("Unexpected SNS notification error:", str(error))
+        print("Unexpected SNS error:", str(error))
 
+
+# ==========================================
+# USER REGISTRATION
+# ==========================================
+
+def register_user(body):
+
+    if not isinstance(body, dict):
+        return response(400, {
+            "error": "Invalid request body"
+        })
+
+    full_name = str(body.get("full_name", "")).strip()
+    email = str(body.get("email", "")).strip().lower()
+    mobile = str(body.get("mobile", "")).strip()
+    role = str(body.get("role", "")).strip().lower()
+
+    if not all([full_name, email, mobile, role]):
+        return response(400, {
+            "error": "Please fill in all required fields"
+        })
+
+    if len(full_name) > 120:
+        return response(400, {
+            "error": "Full name is too long"
+        })
+
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return response(400, {
+            "error": "Invalid email address"
+        })
+
+    if not re.fullmatch(r"[0-9+\-\s()]{7,20}", mobile):
+        return response(400, {
+            "error": "Invalid mobile number"
+        })
+
+    if role not in {"student", "analyst", "administrator"}:
+        return response(400, {
+            "error": "Invalid registration role"
+        })
+
+    current_time = datetime.now(timezone.utc).isoformat()
+
+    item = {
+        "email": email,
+        "full_name": full_name,
+        "mobile": mobile,
+        "requested_role": role,
+        "account_status": "pending_approval",
+        "created_at": current_time
+    }
+
+    # Student details
+    if role == "student":
+
+        roll_number = str(body.get("roll_number", "")).strip()
+        course = str(body.get("course", "")).strip()
+        semester = str(body.get("semester", "")).strip()
+        department = str(body.get("department", "")).strip()
+
+        if not all([
+            roll_number,
+            course,
+            semester,
+            department
+        ]):
+            return response(400, {
+                "error": "Complete all student details"
+            })
+
+        item.update({
+            "roll_number": roll_number[:50],
+            "course": course[:100],
+            "semester": semester[:30],
+            "department": department[:100]
+        })
+
+    # Analyst and Administrator details
+    else:
+
+        employee_id = str(body.get("employee_id", "")).strip()
+        department = str(body.get("department", "")).strip()
+        designation = str(body.get("designation", "")).strip()
+
+        if not all([
+            employee_id,
+            department,
+            designation
+        ]):
+            return response(400, {
+                "error": "Complete all employee details"
+            })
+
+        item.update({
+            "employee_id": employee_id[:50],
+            "department": department[:100],
+            "designation": designation[:100]
+        })
+
+    try:
+
+        users_table.put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(email)"
+        )
+
+        print("User registration saved:", email)
+
+        return response(201, {
+            "message": "Registration submitted successfully. Approval and password setup are still required.",
+            "email": email,
+            "account_status": "pending_approval"
+        })
+
+    except ClientError as error:
+
+        error_code = error.response["Error"]["Code"]
+
+        if error_code == "ConditionalCheckFailedException":
+            return response(409, {
+                "error": "This email is already registered"
+            })
+
+        print("User registration failed:", error)
+
+        return response(500, {
+            "error": "Could not save registration"
+        })
+
+
+# ==========================================
+# LAMBDA HANDLER
+# ==========================================
 
 def lambda_handler(event, context):
 
@@ -73,14 +226,41 @@ def lambda_handler(event, context):
 
     path = event.get("rawPath", "/").rstrip("/") or "/"
 
+    # CORS
     if method == "OPTIONS":
         return response(200, {"ok": True})
 
+    # Health check
     if method == "GET" and path == "/health":
         return response(200, {"status": "ok"})
 
-    # Generate S3 presigned upload URL
+    # ======================================
+    # REGISTER USER
+    # ======================================
+
+    if method == "POST" and path == "/register":
+
+        try:
+            body = json.loads(event.get("body") or "{}")
+            return register_user(body)
+
+        except json.JSONDecodeError:
+            return response(400, {
+                "error": "Invalid JSON"
+            })
+
+        except Exception as error:
+            print("Registration API error:", str(error))
+            return response(500, {
+                "error": "Internal server error"
+            })
+
+    # ======================================
+    # S3 UPLOAD URL
+    # ======================================
+
     if method == "POST" and path == "/upload-url":
+
         try:
             body = json.loads(event.get("body") or "{}")
 
@@ -92,21 +272,21 @@ def lambda_handler(event, context):
             }
 
             if content_type not in allowed_types:
-                return response(
-                    400,
-                    {"error": "Only JPEG and PNG images are allowed"}
-                )
+                return response(400, {
+                    "error": "Only JPEG and PNG images are allowed"
+                })
 
             try:
                 file_size = int(body.get("file_size", 0))
             except (TypeError, ValueError):
-                return response(400, {"error": "Invalid file size"})
+                return response(400, {
+                    "error": "Invalid file size"
+                })
 
             if file_size <= 0 or file_size > 5 * 1024 * 1024:
-                return response(
-                    400,
-                    {"error": "Image must be between 1 byte and 5 MB"}
-                )
+                return response(400, {
+                    "error": "Image must be between 1 byte and 5 MB"
+                })
 
             extension = allowed_types[content_type]
             object_key = f"attachments/{uuid.uuid4()}.{extension}"
@@ -121,53 +301,60 @@ def lambda_handler(event, context):
                 ExpiresIn=180
             )
 
-            return response(
-                200,
-                {
-                    "upload_url": upload_url,
-                    "attachment_key": object_key
-                }
-            )
+            return response(200, {
+                "upload_url": upload_url,
+                "attachment_key": object_key
+            })
 
         except ClientError as error:
-            print("S3 presigned URL generation failed:", error)
-            return response(
-                500,
-                {"error": "Could not generate upload URL"}
-            )
+            print("S3 upload URL error:", error)
+            return response(500, {
+                "error": "Could not generate upload URL"
+            })
 
         except json.JSONDecodeError:
-            return response(400, {"error": "Invalid JSON"})
+            return response(400, {
+                "error": "Invalid JSON"
+            })
 
         except Exception as error:
-            print("Unexpected S3 upload URL error:", str(error))
-            return response(500, {"error": "Internal server error"})
+            print("Unexpected S3 error:", str(error))
+            return response(500, {
+                "error": "Internal server error"
+            })
 
-    # Get complaints from DynamoDB
+    # ======================================
+    # GET COMPLAINTS
+    # ======================================
+
     if method == "GET" and path == "/complaints":
+
         try:
             result = table.scan(Limit=50)
-            items = result.get("Items", [])
 
-            return response(200, {"items": items})
+            return response(200, {
+                "items": result.get("Items", [])
+            })
 
         except ClientError as error:
             print("DynamoDB scan failed:", error)
-            return response(
-                500,
-                {"error": "Could not load complaints"}
-            )
+            return response(500, {
+                "error": "Could not load complaints"
+            })
 
-    # Update complaint status (Admin feature)
+    # ======================================
+    # UPDATE COMPLAINT STATUS
+    # ======================================
+
     if method == "POST" and path == "/update-status":
+
         try:
             body = json.loads(event.get("body") or "{}")
 
             if not isinstance(body, dict):
-                return response(
-                    400,
-                    {"error": "Request body must be a JSON object"}
-                )
+                return response(400, {
+                    "error": "Request body must be a JSON object"
+                })
 
             complaint_id = str(
                 body.get("complaint_id", "")
@@ -189,16 +376,14 @@ def lambda_handler(event, context):
             }
 
             if not complaint_id:
-                return response(
-                    400,
-                    {"error": "Complaint ID is required"}
-                )
+                return response(400, {
+                    "error": "Complaint ID is required"
+                })
 
             if new_status not in allowed_statuses:
-                return response(
-                    400,
-                    {"error": "Invalid complaint status"}
-                )
+                return response(400, {
+                    "error": "Invalid complaint status"
+                })
 
             current_time = datetime.now(timezone.utc).isoformat()
 
@@ -229,7 +414,6 @@ def lambda_handler(event, context):
             if new_status == "completed":
                 update_expression += ", resolved_at = :resolved_at"
                 expression_values[":resolved_at"] = current_time
-
             else:
                 update_expression += " REMOVE resolved_at"
 
@@ -246,51 +430,51 @@ def lambda_handler(event, context):
                 ReturnValues="ALL_NEW"
             )
 
-            print("Complaint status updated:", complaint_id, new_status)
+            print("Complaint status updated:", complaint_id)
 
-            return response(
-                200,
-                {
-                    "message": "Complaint status updated successfully",
-                    "item": result.get("Attributes", {})
-                }
-            )
+            return response(200, {
+                "message": "Complaint status updated successfully",
+                "item": result.get("Attributes", {})
+            })
 
         except json.JSONDecodeError:
-            return response(400, {"error": "Invalid JSON"})
+            return response(400, {
+                "error": "Invalid JSON"
+            })
 
         except ClientError as error:
+
             error_code = error.response["Error"]["Code"]
             print("Complaint status update failed:", error)
 
             if error_code == "ConditionalCheckFailedException":
-                return response(
-                    404,
-                    {"error": "Complaint not found"}
-                )
+                return response(404, {
+                    "error": "Complaint not found"
+                })
 
-            return response(
-                500,
-                {"error": "Could not update complaint status"}
-            )
+            return response(500, {
+                "error": "Could not update complaint status"
+            })
 
         except Exception as error:
             print("Unexpected status update error:", str(error))
-            return response(
-                500,
-                {"error": "Internal server error"}
-            )
+            return response(500, {
+                "error": "Internal server error"
+            })
 
-    # Register a new complaint
+    # ======================================
+    # REGISTER COMPLAINT
+    # ======================================
+
     if method == "POST" and path == "/complaints":
+
         try:
             body = json.loads(event.get("body") or "{}")
 
             if not isinstance(body, dict):
-                return response(
-                    400,
-                    {"error": "Request body must be a JSON object"}
-                )
+                return response(400, {
+                    "error": "Request body must be a JSON object"
+                })
 
             required = [
                 "student_id",
@@ -304,20 +488,18 @@ def lambda_handler(event, context):
                 not str(body.get(key, "")).strip()
                 for key in required
             ):
-                return response(
-                    400,
-                    {"error": "Missing required fields"}
-                )
+                return response(400, {
+                    "error": "Missing required fields"
+                })
 
             priority = str(
                 body.get("priority", "medium")
             ).lower()
 
             if priority not in {"low", "medium", "high"}:
-                return response(
-                    400,
-                    {"error": "Priority must be low, medium, or high"}
-                )
+                return response(400, {
+                    "error": "Priority must be low, medium, or high"
+                })
 
             # Validate attachment
             attachment_key = str(
@@ -330,10 +512,9 @@ def lambda_handler(event, context):
                     r"attachments/[0-9a-fA-F-]{36}\.(jpg|png)",
                     attachment_key
                 ):
-                    return response(
-                        400,
-                        {"error": "Invalid attachment key"}
-                    )
+                    return response(400, {
+                        "error": "Invalid attachment key"
+                    })
 
                 try:
                     uploaded_file = s3.head_object(
@@ -342,25 +523,22 @@ def lambda_handler(event, context):
                     )
 
                     if uploaded_file.get("ContentLength", 0) > 5 * 1024 * 1024:
-                        return response(
-                            400,
-                            {"error": "Image exceeds 5 MB"}
-                        )
+                        return response(400, {
+                            "error": "Image exceeds 5 MB"
+                        })
 
                     if uploaded_file.get("ContentType") not in {
                         "image/jpeg",
                         "image/png"
                     }:
-                        return response(
-                            400,
-                            {"error": "Invalid image type"}
-                        )
+                        return response(400, {
+                            "error": "Invalid image type"
+                        })
 
                 except ClientError:
-                    return response(
-                        400,
-                        {"error": "Uploaded image not found"}
-                    )
+                    return response(400, {
+                        "error": "Uploaded image not found"
+                    })
 
             # Create complaint record
             current_time = datetime.now(timezone.utc).isoformat()
@@ -390,26 +568,34 @@ def lambda_handler(event, context):
 
             print("Complaint saved successfully:", item["complaint_id"])
 
-            # SNS notification remains disabled
+            # SNS remains disabled for complaint submission
             print("SNS notification temporarily disabled")
 
-            return response(201, {"item": item})
+            return response(201, {
+                "item": item
+            })
 
         except json.JSONDecodeError:
-            return response(400, {"error": "Invalid JSON"})
+            return response(400, {
+                "error": "Invalid JSON"
+            })
 
         except ClientError as error:
             print("DynamoDB or S3 operation failed:", error)
-            return response(
-                500,
-                {"error": "Could not save complaint"}
-            )
+            return response(500, {
+                "error": "Could not save complaint"
+            })
 
         except Exception as error:
             print("Unexpected complaint error:", str(error))
-            return response(
-                500,
-                {"error": "Internal server error"}
-            )
+            return response(500, {
+                "error": "Internal server error"
+            })
 
-    return response(404, {"error": "Not found"})
+    # ======================================
+    # UNKNOWN ROUTE
+    # ======================================
+
+    return response(404, {
+        "error": "Not found"
+    })
