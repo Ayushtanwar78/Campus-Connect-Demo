@@ -14,6 +14,7 @@ const viewTitles = {
 
 let complaintsCache = [];
 let toastTimer;
+let refreshInProgress = false;
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"];
@@ -109,11 +110,32 @@ function statusBadge(status) {
 }
 
 // ==========================================
+// TOAST MESSAGE
+// ==========================================
+
+function showToast(message) {
+  const toast = $("toast");
+
+  if (!toast) {
+    console.log(message);
+    return;
+  }
+
+  toast.textContent = message;
+  toast.classList.add("show");
+
+  clearTimeout(toastTimer);
+
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 5000);
+}
+
+// ==========================================
 // ROLE-BASED WEBSITE ACCESS
 // ==========================================
 
 function configureRoleInterface() {
-  // Control sidebar menu visibility based on user role.
   document.querySelectorAll("[data-view], [data-go]").forEach(element => {
     const view = element.dataset.view || element.dataset.go;
 
@@ -125,24 +147,15 @@ function configureRoleInterface() {
     element.hidden = !allowed;
   });
 
-  // Control Admin Management panel.
-  const adminPanel = document.getElementById("adminView");
-  if (adminPanel) {
-    adminPanel.hidden = !isAdmin;
-  }
+  const adminPanel = $("adminView");
+  if (adminPanel) adminPanel.hidden = !isAdmin;
 
-  // Control student-only panels.
-  const reportPanel = document.getElementById("reportView");
-  if (reportPanel) {
-    reportPanel.hidden = !isStudent;
-  }
+  const reportPanel = $("reportView");
+  if (reportPanel) reportPanel.hidden = !isStudent;
 
-  const complaintsPanel = document.getElementById("complaintsView");
-  if (complaintsPanel) {
-    complaintsPanel.hidden = !isStudent;
-  }
+  const complaintsPanel = $("complaintsView");
+  if (complaintsPanel) complaintsPanel.hidden = !isStudent;
 
-  // Display the correct dashboard heading.
   const dashboardHeading = document.querySelector(
     "#dashboardView h1, #dashboardView h2"
   );
@@ -153,40 +166,63 @@ function configureRoleInterface() {
       : "STUDENT DASHBOARD";
   }
 
-  // Open the dashboard after applying role permissions.
+  // Students see only the Total Complaints statistic card.
+  document.querySelectorAll(
+    "#dashboardView .stats-grid .stat-card"
+  ).forEach((card, index) => {
+    card.hidden = isStudent && index !== 0;
+  });
+
   showView("dashboard");
 }
 
+// ==========================================
+// USER PROFILE AND LOGOUT
+// ==========================================
 
-  // Update the profile name if the existing profile elements are present.
-  const profileName = document.querySelector(
-    ".profile-name, #profileName"
-  );
+function setupProfileAndLogout() {
+  const displayName = campusUser.full_name || userEmail;
+
+  const roleNames = {
+    student: "Student",
+    administrator: "Administrator"
+  };
+
+  const profileName = $("profileName");
+  const profileRole = $("profileRole");
+  const profileAvatar = $("profileAvatar");
+  const logoutButton = $("logoutButton");
 
   if (profileName) {
-    profileName.textContent = campusUser.full_name || userEmail;
+    profileName.textContent = displayName;
   }
-
-  const profileRole = document.querySelector(
-    ".profile-role, #profileRole"
-  );
 
   if (profileRole) {
-    profileRole.textContent = isAdmin ? "Administrator" : "Student";
+    profileRole.textContent = roleNames[userRole] || "User";
   }
 
-  // Show only Total Complaints to students.
-const statisticCards = document.querySelectorAll(
-  "#dashboardView .stats-grid .stat-card"
-);
+  if (profileAvatar) {
+    const initials = displayName
+      .trim()
+      .split(/\s+/)
+      .map(word => word[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
-statisticCards.forEach((card, index) => {
-  card.hidden = isStudent && index !== 0;
-});
+    profileAvatar.textContent = initials || "U";
+  }
 
-  // Start with the dashboard.
-  showView("dashboard");
-  
+  if (logoutButton) {
+    logoutButton.addEventListener("click", () => {
+      sessionStorage.removeItem("campusToken");
+      sessionStorage.removeItem("campusUser");
+      sessionStorage.removeItem("campusTokenExpiry");
+
+      window.location.href = "login.html";
+    });
+  }
+}
 
 // ==========================================
 // API RESPONSE HELPERS
@@ -299,6 +335,46 @@ function normalizeComplaint(item) {
 }
 
 // ==========================================
+// STATUS HISTORY DISPLAY
+// ==========================================
+
+function renderStatusHistory(history) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return `
+      <p class="history-empty">
+        No status updates have been recorded yet.
+      </p>
+    `;
+  }
+
+  return `
+    <details class="status-history">
+      <summary>
+        View status history (${history.length})
+      </summary>
+
+      <ul>
+        ${history.map(entry => `
+          <li>
+            <strong>
+              ${escapeHTML(displayStatus(entry.status))}
+            </strong>
+
+            <span>
+              ${formatDate(entry.changed_at || entry.updated_at)}
+            </span>
+
+            ${entry.remarks ? `
+              <p>${escapeHTML(entry.remarks)}</p>
+            ` : ""}
+          </li>
+        `).join("")}
+      </ul>
+    </details>
+  `;
+}
+
+// ==========================================
 // S3 IMAGE UPLOAD
 // ==========================================
 
@@ -384,21 +460,32 @@ function render() {
   });
 
   const pending = items.filter(
-    x => displayStatus(x.status) === "Pending"
+    item => displayStatus(item.status) === "Pending"
   ).length;
 
   const progress = items.filter(
-    x => displayStatus(x.status) === "In Progress"
+    item => displayStatus(item.status) === "In Progress"
   ).length;
 
   const completed = items.filter(
-    x => displayStatus(x.status) === "Completed"
+    item => displayStatus(item.status) === "Completed"
   ).length;
 
-  if ($("totalCount")) $("totalCount").textContent = items.length;
-  if ($("pendingCount")) $("pendingCount").textContent = pending;
-  if ($("progressCount")) $("progressCount").textContent = progress;
-  if ($("resolvedCount")) $("resolvedCount").textContent = completed;
+  if ($("totalCount")) {
+    $("totalCount").textContent = items.length;
+  }
+
+  if ($("pendingCount")) {
+    $("pendingCount").textContent = pending;
+  }
+
+  if ($("progressCount")) {
+    $("progressCount").textContent = progress;
+  }
+
+  if ($("resolvedCount")) {
+    $("resolvedCount").textContent = completed;
+  }
 
   // Recent complaints
   if ($("recentRows")) {
@@ -408,10 +495,12 @@ function render() {
           <div class="complaint-title">
             ${escapeHTML(item.title)}
           </div>
+
           <div class="complaint-id">
             ID: ${escapeHTML(item.complaint_id || "—")}
           </div>
         </td>
+
         <td>${escapeHTML(item.category)}</td>
         <td>${formatDate(item.created_at)}</td>
         <td>${statusBadge(item.status)}</td>
@@ -437,7 +526,10 @@ function render() {
         item => displayStatus(item.status) === filter
       );
 
-  // My Complaints - students only
+  // ========================================
+  // STUDENT: MY COMPLAINTS
+  // ========================================
+
   if ($("allComplaints")) {
     $("allComplaints").innerHTML = isStudent
       ? filtered.map(item => `
@@ -446,6 +538,7 @@ function render() {
           <div class="complaint-card-top">
             <div class="complaint-card-heading">
               <h3>${escapeHTML(item.title)}</h3>
+
               <span class="complaint-id">
                 ID: ${escapeHTML(item.complaint_id || "—")}
               </span>
@@ -475,7 +568,11 @@ function render() {
 
           <div class="complaint-description">
             <span class="detail-label">Description</span>
-            <p>${escapeHTML(item.description || "No description provided.")}</p>
+            <p>
+              ${escapeHTML(
+                item.description || "No description provided."
+              )}
+            </p>
           </div>
 
           ${item.attachment_key ? `
@@ -485,12 +582,22 @@ function render() {
             </div>
           ` : ""}
 
-          ${item.admin_remarks ? `
-            <div class="complaint-description">
-              <span class="detail-label">Latest admin remarks</span>
-              <p>${escapeHTML(item.admin_remarks)}</p>
-            </div>
-          ` : ""}
+          <div class="complaint-description">
+            <span class="detail-label">Latest administrator remarks</span>
+
+            <p>
+              ${escapeHTML(
+                item.admin_remarks || "No administrator remarks yet."
+              )}
+            </p>
+          </div>
+
+          <div class="complaint-description">
+            <span class="detail-label">Last updated</span>
+            <p>${formatDate(item.updated_at || item.created_at)}</p>
+          </div>
+
+          ${renderStatusHistory(item.status_history)}
 
         </article>
       `).join("")
@@ -625,6 +732,7 @@ function renderAdminComplaints(items) {
           </label>
 
           <button
+            type="button"
             class="button primary admin-update-button"
             data-id="${escapeHTML(item.complaint_id)}"
           >
@@ -633,31 +741,7 @@ function renderAdminComplaints(items) {
 
         </div>
 
-        ${item.status_history.length ? `
-          <details class="status-history">
-
-            <summary>
-              View status history (${item.status_history.length})
-            </summary>
-
-            <ul>
-              ${item.status_history.map(entry => `
-                <li>
-                  <strong>
-                    ${escapeHTML(displayStatus(entry.status))}
-                  </strong>
-
-                  <span>${formatDate(entry.changed_at)}</span>
-
-                  ${entry.remarks
-                    ? `<p>${escapeHTML(entry.remarks)}</p>`
-                    : ""}
-                </li>
-              `).join("")}
-            </ul>
-
-          </details>
-        ` : ""}
+        ${renderStatusHistory(item.status_history)}
 
       </article>
     `;
@@ -677,7 +761,6 @@ function renderAdminComplaints(items) {
 
 if ($("adminComplaints")) {
   $("adminComplaints").addEventListener("click", async event => {
-
     const button = event.target.closest(".admin-update-button");
 
     if (!button || !isAdmin) return;
@@ -707,7 +790,6 @@ if ($("adminComplaints")) {
     button.textContent = "Updating...";
 
     try {
-
       await apiRequest("update-status", {
         method: "POST",
         headers: {
@@ -725,7 +807,6 @@ if ($("adminComplaints")) {
       await loadComplaints();
 
     } catch (error) {
-
       console.error("Status update failed:", error);
 
       showToast("Status update failed: " + error.message);
@@ -741,7 +822,6 @@ if ($("adminComplaints")) {
 // ==========================================
 
 function showView(name) {
-
   const allowed =
     name === "dashboard" ||
     (isStudent && ["report", "complaints"].includes(name)) ||
@@ -750,7 +830,6 @@ function showView(name) {
   if (!allowed || !views.includes(name)) return;
 
   views.forEach(view => {
-
     const section = $(view + "View");
 
     if (section) {
@@ -759,7 +838,6 @@ function showView(name) {
   });
 
   document.querySelectorAll(".nav-link").forEach(button => {
-
     button.classList.toggle(
       "active",
       button.dataset.view === name
@@ -788,16 +866,18 @@ function showView(name) {
 // ==========================================
 
 async function refreshData() {
+  // Prevent overlapping refresh requests.
+  if (refreshInProgress) return;
+
+  refreshInProgress = true;
 
   try {
-
     await loadComplaints();
-
   } catch (error) {
-
     console.error("Loading complaints failed:", error);
-
     showToast("Unable to load complaints: " + error.message);
+  } finally {
+    refreshInProgress = false;
   }
 }
 
@@ -806,11 +886,8 @@ async function refreshData() {
 // ==========================================
 
 document.querySelectorAll("[data-view], [data-go]").forEach(button => {
-
   button.addEventListener("click", () => {
-
     showView(button.dataset.view || button.dataset.go);
-
   });
 });
 
@@ -819,13 +896,10 @@ document.querySelectorAll("[data-view], [data-go]").forEach(button => {
 // ==========================================
 
 if ($("menuToggle")) {
-
   $("menuToggle").addEventListener("click", () => {
-
     if ($("sidebar")) {
       $("sidebar").classList.toggle("open");
     }
-
   });
 }
 
@@ -834,9 +908,7 @@ if ($("menuToggle")) {
 // ==========================================
 
 if ($("statusFilter")) {
-
   $("statusFilter").addEventListener("change", render);
-
 }
 
 // ==========================================
@@ -844,9 +916,7 @@ if ($("statusFilter")) {
 // ==========================================
 
 if ($("refreshAdmin")) {
-
   $("refreshAdmin").addEventListener("click", refreshData);
-
 }
 
 // ==========================================
@@ -854,13 +924,10 @@ if ($("refreshAdmin")) {
 // ==========================================
 
 if ($("attachment")) {
-
   $("attachment").addEventListener("change", event => {
-
     const file = event.target.files[0];
 
     if (!file) {
-
       if ($("fileHint")) {
         $("fileHint").textContent =
           "JPG or PNG only. Maximum size 2 MB.";
@@ -873,7 +940,6 @@ if ($("attachment")) {
     const validSize = file.size <= MAX_FILE_SIZE;
 
     if (!validType || !validSize) {
-
       event.target.value = "";
 
       if ($("fileHint")) {
@@ -884,10 +950,8 @@ if ($("attachment")) {
       showToast("Choose a JPG or PNG file up to 2 MB.");
 
     } else if ($("fileHint")) {
-
       $("fileHint").textContent =
         `${file.name} selected. Ready to upload.`;
-
     }
   });
 }
@@ -897,9 +961,7 @@ if ($("attachment")) {
 // ==========================================
 
 if ($("complaintForm")) {
-
   $("complaintForm").addEventListener("submit", async event => {
-
     event.preventDefault();
 
     if (!isStudent) {
@@ -926,7 +988,6 @@ if ($("complaintForm")) {
     };
 
     if (selectedFile) {
-
       const validType = ALLOWED_FILE_TYPES.includes(selectedFile.type);
       const validSize = selectedFile.size <= MAX_FILE_SIZE;
 
@@ -937,7 +998,6 @@ if ($("complaintForm")) {
     }
 
     if (DEMO_MODE) {
-
       const list = JSON.parse(
         localStorage.getItem("campusconnect_demo_complaints") || "[]"
       );
@@ -948,6 +1008,8 @@ if ($("complaintForm")) {
         complaint_id: "CC-" + Date.now(),
         status: "submitted",
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        admin_remarks: "",
         status_history: []
       });
 
@@ -961,7 +1023,6 @@ if ($("complaintForm")) {
       form.reset();
 
       render();
-
       showView("complaints");
 
       showToast("Demo complaint saved.");
@@ -970,7 +1031,6 @@ if ($("complaintForm")) {
     }
 
     try {
-
       if (selectedFile) {
         payload.attachment_key = await uploadAttachment(selectedFile);
       }
@@ -1003,156 +1063,37 @@ if ($("complaintForm")) {
       );
 
     } catch (error) {
-
       console.error("Complaint submission failed:", error);
 
       showToast("Submission failed: " + error.message);
-
     }
   });
 }
 
 // ==========================================
-// TOAST MESSAGE
+// AUTOMATIC STUDENT COMPLAINT REFRESH
 // ==========================================
 
-function showToast(message) {
+// Refresh complaints every 15 seconds while the
+// student is viewing the My Complaints page.
 
-  const toast = $("toast");
+if (isStudent && campusToken) {
+  setInterval(() => {
+    const complaintsPage = $("complaintsView");
 
-  if (!toast) return;
-
-  toast.textContent = message;
-
-  toast.classList.add("show");
-
-  clearTimeout(toastTimer);
-
-  toastTimer = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 5000);
+    if (
+      complaintsPage &&
+      complaintsPage.classList.contains("active")
+    ) {
+      refreshData();
+    }
+  }, 15000);
 }
 
 // ==========================================
 // INITIALIZE WEBSITE
 // ==========================================
 
-configureRoleInterface();
-
-render();
-
-if (API_BASE && !DEMO_MODE && campusToken) {
-  refreshData();
-}
-
-// ==========================================
-// USER PROFILE AND LOGOUT
-// ==========================================
-
-(function setupProfileAndLogout() {
-
-  const user = JSON.parse(
-    sessionStorage.getItem("campusUser") || "{}"
-  );
-
-  const role = (user.role || "").toLowerCase();
-
-  const roleNames = {
-    student: "Student",
-    administrator: "Administrator",
-    analyst: "Analyst"
-  };
-
-  const displayName = user.full_name || "User";
-
-  const profileName = document.getElementById("profileName");
-  const profileRole = document.getElementById("profileRole");
-  const profileAvatar = document.getElementById("profileAvatar");
-  const logoutButton = document.getElementById("logoutButton");
-
-  // Display logged-in user's name.
-  if (profileName) {
-    profileName.textContent = displayName;
-  }
-
-  // Display the correct role.
-  if (profileRole) {
-    profileRole.textContent = roleNames[role] || "User";
-  }
-
-  // Generate initials from the user's name.
-  if (profileAvatar) {
-    const initials = displayName
-      .trim()
-      .split(/\s+/)
-      .map(word => word[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-
-    profileAvatar.textContent = initials || "U";
-  }
-
-  // Logout functionality.
-  if (logoutButton) {
-    logoutButton.addEventListener("click", function () {
-
-      sessionStorage.removeItem("campusToken");
-      sessionStorage.removeItem("campusUser");
-      sessionStorage.removeItem("campusTokenExpiry");
-
-      window.location.href = "login.html";
-
-    });
-  }
-
-})();
-function setupProfileAndLogout() {
-  const user = JSON.parse(
-    sessionStorage.getItem("campusUser") || "{}"
-  );
-
-  const roleNames = {
-    student: "Student",
-    administrator: "Administrator",
-    analyst: "Analyst"
-  };
-
-  const name = user.full_name || "User";
-  const role = (user.role || "").toLowerCase();
-
-  const profileName = document.getElementById("profileName");
-  const profileRole = document.getElementById("profileRole");
-  const profileAvatar = document.getElementById("profileAvatar");
-  const logoutButton = document.getElementById("logoutButton");
-
-  if (profileName) {
-    profileName.textContent = name;
-  }
-
-  if (profileRole) {
-    profileRole.textContent = roleNames[role] || "User";
-  }
-
-  if (profileAvatar) {
-    profileAvatar.textContent = name
-      .trim()
-      .split(/\s+/)
-      .map(word => word[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-  }
-
-  if (logoutButton) {
-    logoutButton.addEventListener("click", () => {
-      sessionStorage.removeItem("campusToken");
-      sessionStorage.removeItem("campusUser");
-      sessionStorage.removeItem("campusTokenExpiry");
-
-      window.location.href = "login.html";
-    });
-  }
-}
-
 setupProfileAndLogout();
+configureRoleInterface();
+render();
