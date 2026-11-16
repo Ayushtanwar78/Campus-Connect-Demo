@@ -1,6 +1,8 @@
 const API_BASE = "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
 const DEMO_MODE = false;
 
+const $ = id => document.getElementById(id);
+
 const views = ["dashboard", "report", "complaints", "admin"];
 
 const viewTitles = {
@@ -10,13 +12,45 @@ const viewTitles = {
   admin: "Admin Management"
 };
 
-const $ = id => document.getElementById(id);
-
 let complaintsCache = [];
 let toastTimer;
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"];
+
+// ==========================================
+// LOGIN SESSION
+// ==========================================
+
+function getLoggedInUser() {
+  try {
+    return JSON.parse(sessionStorage.getItem("campusUser") || "null");
+  } catch {
+    return null;
+  }
+}
+
+const campusToken = sessionStorage.getItem("campusToken");
+const campusUser = getLoggedInUser();
+
+const userRole = String(campusUser?.role || "").toLowerCase();
+const userEmail = String(campusUser?.email || "").toLowerCase();
+
+const isStudent = userRole === "student";
+const isAdmin = userRole === "administrator";
+
+if (
+  !campusToken ||
+  !campusUser ||
+  !userEmail ||
+  (!isStudent && !isAdmin)
+) {
+  window.location.href = "login.html";
+}
+
+// ==========================================
+// COMMON HELPERS
+// ==========================================
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({
@@ -45,7 +79,9 @@ function formatDate(value) {
 }
 
 function displayStatus(status) {
-  const value = String(status || "").toLowerCase().replace(/-/g, "_");
+  const value = String(status || "")
+    .toLowerCase()
+    .replace(/-/g, "_");
 
   if (value === "submitted" || value === "pending") return "Pending";
   if (value === "in progress" || value === "in_progress") return "In Progress";
@@ -72,23 +108,69 @@ function statusBadge(status) {
   return `<span class="badge ${escapeHTML(cssClass)}">${escapeHTML(label)}</span>`;
 }
 
-function normalizeComplaint(item) {
-  return {
-    complaint_id: item.complaint_id || item.id || "",
-    student_id: item.student_id || "",
-    title: item.title || "Untitled Complaint",
-    category: item.category || "Other",
-    location: item.location || "Not specified",
-    description: item.description || "",
-    priority: String(item.priority || "medium").toLowerCase(),
-    status: item.status || "submitted",
-    created_at: item.created_at || item.createdAt || "",
-    updated_at: item.updated_at || "",
-    resolved_at: item.resolved_at || "",
-    admin_remarks: item.admin_remarks || "",
-    status_history: Array.isArray(item.status_history) ? item.status_history : [],
-    attachment_key: item.attachment_key || ""
-  };
+// ==========================================
+// ROLE-BASED WEBSITE ACCESS
+// ==========================================
+
+function configureRoleInterface() {
+  document.querySelectorAll("[data-view], [data-go]").forEach(element => {
+    const view = element.dataset.view || element.dataset.go;
+
+    const allowed =
+      view === "dashboard" ||
+      (isStudent && ["report", "complaints"].includes(view)) ||
+      (isAdmin && view === "admin");
+
+    element.hidden = !allowed;
+  });
+
+  // Show the correct dashboard heading.
+  const dashboardHeading = document.querySelector(
+    "#dashboardView h1, #dashboardView h2"
+  );
+
+  if (dashboardHeading) {
+    dashboardHeading.textContent = isAdmin
+      ? "ADMINISTRATOR DASHBOARD"
+      : "STUDENT PORTAL";
+  }
+
+  // Update the profile name if the existing profile elements are present.
+  const profileName = document.querySelector(
+    ".profile-name, #profileName"
+  );
+
+  if (profileName) {
+    profileName.textContent = campusUser.full_name || userEmail;
+  }
+
+  const profileRole = document.querySelector(
+    ".profile-role, #profileRole"
+  );
+
+  if (profileRole) {
+    profileRole.textContent = isAdmin ? "Administrator" : "Student";
+  }
+
+  // Start with the dashboard.
+  showView("dashboard");
+}
+
+// ==========================================
+// API RESPONSE HELPERS
+// ==========================================
+
+function unwrapApiData(data) {
+  if (!data || !data.body) return data || {};
+
+  try {
+    return typeof data.body === "string"
+      ? JSON.parse(data.body)
+      : data.body;
+  } catch (error) {
+    console.error("Could not parse Lambda response body:", error);
+    return data;
+  }
 }
 
 function extractComplaints(data) {
@@ -113,45 +195,81 @@ function extractComplaints(data) {
   return [];
 }
 
-function unwrapApiData(data) {
-  if (!data || !data.body) return data || {};
-
-  try {
-    return typeof data.body === "string"
-      ? JSON.parse(data.body)
-      : data.body;
-  } catch (error) {
-    console.error("Could not parse Lambda response body:", error);
-    return data;
-  }
-}
+// ==========================================
+// AUTHENTICATED API REQUEST
+// ==========================================
 
 async function apiRequest(path, options = {}) {
   const base = API_BASE.endsWith("/") ? API_BASE : API_BASE + "/";
 
-  const response = await fetch(base + path.replace(/^\/+/, ""), {
-    ...options,
-    headers: {
-      ...(options.headers || {})
-    }
-  });
+  const headers = {
+    ...(options.headers || {}),
+    "Authorization": `Bearer ${campusToken}`
+  };
 
-  const data = await response.json().catch(() => ({}));
+  const apiResponse = await fetch(
+    base + path.replace(/^\/+/, ""),
+    {
+      ...options,
+      headers
+    }
+  );
+
+  const data = await apiResponse.json().catch(() => ({}));
   const result = unwrapApiData(data);
 
-  if (!response.ok) {
+  if (!apiResponse.ok) {
+    if (apiResponse.status === 401) {
+      sessionStorage.removeItem("campusToken");
+      sessionStorage.removeItem("campusUser");
+      sessionStorage.removeItem("campusTokenExpiry");
+
+      showToast("Your session has expired. Please log in again.");
+
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 1200);
+    }
+
     throw new Error(
       result.error ||
       result.message ||
       data.error ||
-      `Request failed (${response.status})`
+      `Request failed (${apiResponse.status})`
     );
   }
 
   return result;
 }
 
-/* Upload image to S3 */
+// ==========================================
+// NORMALIZE COMPLAINT
+// ==========================================
+
+function normalizeComplaint(item) {
+  return {
+    complaint_id: item.complaint_id || item.id || "",
+    student_id: item.student_id || "",
+    title: item.title || "Untitled Complaint",
+    category: item.category || "Other",
+    location: item.location || "Not specified",
+    description: item.description || "",
+    status: item.status || "submitted",
+    created_at: item.created_at || item.createdAt || "",
+    updated_at: item.updated_at || "",
+    resolved_at: item.resolved_at || "",
+    admin_remarks: item.admin_remarks || "",
+    status_history: Array.isArray(item.status_history)
+      ? item.status_history
+      : [],
+    attachment_key: item.attachment_key || ""
+  };
+}
+
+// ==========================================
+// S3 IMAGE UPLOAD
+// ==========================================
+
 async function uploadAttachment(file) {
   if (!file) return "";
 
@@ -194,13 +312,18 @@ async function uploadAttachment(file) {
   });
 
   if (!uploadResponse.ok) {
-    throw new Error(`S3 image upload failed (${uploadResponse.status}).`);
+    throw new Error(
+      `S3 image upload failed (${uploadResponse.status}).`
+    );
   }
 
   return attachmentKey;
 }
 
-/* Load complaints */
+// ==========================================
+// LOAD COMPLAINTS
+// ==========================================
+
 async function loadComplaints() {
   let records = [];
 
@@ -214,30 +337,48 @@ async function loadComplaints() {
   }
 
   complaintsCache = records.map(normalizeComplaint);
+
   render();
 }
 
-/* Dashboard rendering */
+// ==========================================
+// DASHBOARD RENDERING
+// ==========================================
+
 function render() {
   const items = [...complaintsCache].sort((a, b) => {
-    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    return new Date(b.created_at || 0) -
+      new Date(a.created_at || 0);
   });
 
-  const pending = items.filter(x => displayStatus(x.status) === "Pending").length;
-  const progress = items.filter(x => displayStatus(x.status) === "In Progress").length;
-  const completed = items.filter(x => displayStatus(x.status) === "Completed").length;
+  const pending = items.filter(
+    x => displayStatus(x.status) === "Pending"
+  ).length;
+
+  const progress = items.filter(
+    x => displayStatus(x.status) === "In Progress"
+  ).length;
+
+  const completed = items.filter(
+    x => displayStatus(x.status) === "Completed"
+  ).length;
 
   if ($("totalCount")) $("totalCount").textContent = items.length;
   if ($("pendingCount")) $("pendingCount").textContent = pending;
   if ($("progressCount")) $("progressCount").textContent = progress;
   if ($("resolvedCount")) $("resolvedCount").textContent = completed;
 
+  // Recent complaints
   if ($("recentRows")) {
     $("recentRows").innerHTML = items.slice(0, 5).map(item => `
       <tr>
         <td>
-          <div class="complaint-title">${escapeHTML(item.title)}</div>
-          <div class="complaint-id">ID: ${escapeHTML(item.complaint_id || "—")}</div>
+          <div class="complaint-title">
+            ${escapeHTML(item.title)}
+          </div>
+          <div class="complaint-id">
+            ID: ${escapeHTML(item.complaint_id || "—")}
+          </div>
         </td>
         <td>${escapeHTML(item.category)}</td>
         <td>${formatDate(item.created_at)}</td>
@@ -247,115 +388,153 @@ function render() {
   }
 
   if ($("recentEmpty")) {
-    $("recentEmpty").classList.toggle("show", items.length === 0);
+    $("recentEmpty").classList.toggle(
+      "show",
+      items.length === 0
+    );
   }
 
-  const filter = $("statusFilter") ? $("statusFilter").value : "All";
+  // Student complaint filter
+  const filter = $("statusFilter")
+    ? $("statusFilter").value
+    : "All";
 
   const filtered = filter === "All"
     ? items
-    : items.filter(item => displayStatus(item.status) === filter);
+    : items.filter(
+        item => displayStatus(item.status) === filter
+      );
 
+  // My Complaints - students only
   if ($("allComplaints")) {
-    $("allComplaints").innerHTML = filtered.map(item => `
-      <article class="complaint-card">
-        <div class="complaint-card-top">
-          <div class="complaint-card-heading">
-            <h3>${escapeHTML(item.title)}</h3>
-            <span class="complaint-id">ID: ${escapeHTML(item.complaint_id || "—")}</span>
-          </div>
-          ${statusBadge(item.status)}
-        </div>
+    $("allComplaints").innerHTML = isStudent
+      ? filtered.map(item => `
+        <article class="complaint-card">
 
-        <div class="complaint-details">
-          <div class="complaint-detail">
-            <span class="detail-label">Category</span>
-            <strong>${escapeHTML(item.category)}</strong>
-          </div>
-          <div class="complaint-detail">
-            <span class="detail-label">Location</span>
-            <strong>${escapeHTML(item.location)}</strong>
-          </div>
-          <div class="complaint-detail">
-            <span class="detail-label">Date submitted</span>
-            <strong>${formatDate(item.created_at)}</strong>
-          </div>
-          <div class="complaint-detail">
-            <span class="detail-label">Priority</span>
-            <strong class="priority ${escapeHTML(item.priority)}">
-              ${escapeHTML(item.priority.toUpperCase())}
-            </strong>
-          </div>
-        </div>
+          <div class="complaint-card-top">
+            <div class="complaint-card-heading">
+              <h3>${escapeHTML(item.title)}</h3>
+              <span class="complaint-id">
+                ID: ${escapeHTML(item.complaint_id || "—")}
+              </span>
+            </div>
 
-        <div class="complaint-description">
-          <span class="detail-label">Description</span>
-          <p>${escapeHTML(item.description || "No description provided.")}</p>
-        </div>
-
-        ${item.attachment_key ? `
-          <div class="complaint-attachment">
-            <span class="detail-label">Attachment</span>
-            <strong>Image uploaded</strong>
+            ${statusBadge(item.status)}
           </div>
-        ` : ""}
 
-        ${item.admin_remarks ? `
+          <div class="complaint-details">
+
+            <div class="complaint-detail">
+              <span class="detail-label">Category</span>
+              <strong>${escapeHTML(item.category)}</strong>
+            </div>
+
+            <div class="complaint-detail">
+              <span class="detail-label">Location</span>
+              <strong>${escapeHTML(item.location)}</strong>
+            </div>
+
+            <div class="complaint-detail">
+              <span class="detail-label">Date submitted</span>
+              <strong>${formatDate(item.created_at)}</strong>
+            </div>
+
+          </div>
+
           <div class="complaint-description">
-            <span class="detail-label">Latest admin remarks</span>
-            <p>${escapeHTML(item.admin_remarks)}</p>
+            <span class="detail-label">Description</span>
+            <p>${escapeHTML(item.description || "No description provided.")}</p>
           </div>
-        ` : ""}
-      </article>
-    `).join("");
+
+          ${item.attachment_key ? `
+            <div class="complaint-attachment">
+              <span class="detail-label">Attachment</span>
+              <strong>Image uploaded</strong>
+            </div>
+          ` : ""}
+
+          ${item.admin_remarks ? `
+            <div class="complaint-description">
+              <span class="detail-label">Latest admin remarks</span>
+              <p>${escapeHTML(item.admin_remarks)}</p>
+            </div>
+          ` : ""}
+
+        </article>
+      `).join("")
+      : "";
   }
 
   if ($("allEmpty")) {
-    $("allEmpty").classList.toggle("show", filtered.length === 0);
+    $("allEmpty").classList.toggle(
+      "show",
+      isStudent && filtered.length === 0
+    );
   }
 
+  // Administrator complaint management
   renderAdminComplaints(items);
 }
 
-/* Admin complaint management */
+// ==========================================
+// ADMIN COMPLAINT MANAGEMENT
+// ==========================================
+
 function renderAdminComplaints(items) {
   const container = $("adminComplaints");
+
   if (!container) return;
+
+  if (!isAdmin) {
+    container.innerHTML = "";
+
+    if ($("adminEmpty")) {
+      $("adminEmpty").classList.remove("show");
+    }
+
+    return;
+  }
 
   container.innerHTML = items.map(item => {
     const selectedStatus = statusValue(item.status);
 
     return `
       <article class="complaint-card admin-card">
+
         <div class="complaint-card-top">
           <div class="complaint-card-heading">
             <h3>${escapeHTML(item.title)}</h3>
+
             <span class="complaint-id">
               ID: ${escapeHTML(item.complaint_id)}
             </span>
           </div>
+
           ${statusBadge(item.status)}
         </div>
 
         <div class="complaint-details">
+
           <div class="complaint-detail">
-            <span class="detail-label">Student ID</span>
+            <span class="detail-label">Student Email</span>
             <strong>${escapeHTML(item.student_id || "—")}</strong>
           </div>
+
           <div class="complaint-detail">
             <span class="detail-label">Category</span>
             <strong>${escapeHTML(item.category)}</strong>
           </div>
+
           <div class="complaint-detail">
             <span class="detail-label">Location</span>
             <strong>${escapeHTML(item.location)}</strong>
           </div>
+
           <div class="complaint-detail">
-            <span class="detail-label">Priority</span>
-            <strong class="priority ${escapeHTML(item.priority)}">
-              ${escapeHTML(item.priority.toUpperCase())}
-            </strong>
+            <span class="detail-label">Date submitted</span>
+            <strong>${formatDate(item.created_at)}</strong>
           </div>
+
         </div>
 
         <div class="complaint-description">
@@ -371,57 +550,105 @@ function renderAdminComplaints(items) {
         ` : ""}
 
         <div class="admin-update-form">
+
           <label class="field">
             <span>Update complaint status</span>
-            <select class="admin-status" data-id="${escapeHTML(item.complaint_id)}">
-              <option value="pending" ${selectedStatus === "pending" ? "selected" : ""}>Pending</option>
-              <option value="in_progress" ${selectedStatus === "in_progress" ? "selected" : ""}>In Progress</option>
-              <option value="completed" ${selectedStatus === "completed" ? "selected" : ""}>Completed</option>
-              <option value="rejected" ${selectedStatus === "rejected" ? "selected" : ""}>Rejected</option>
+
+            <select
+              class="admin-status"
+              data-id="${escapeHTML(item.complaint_id)}"
+            >
+              <option value="pending"
+                ${selectedStatus === "pending" ? "selected" : ""}>
+                Pending
+              </option>
+
+              <option value="in_progress"
+                ${selectedStatus === "in_progress" ? "selected" : ""}>
+                In Progress
+              </option>
+
+              <option value="completed"
+                ${selectedStatus === "completed" ? "selected" : ""}>
+                Completed
+              </option>
+
+              <option value="rejected"
+                ${selectedStatus === "rejected" ? "selected" : ""}>
+                Rejected
+              </option>
             </select>
           </label>
 
           <label class="field">
             <span>Admin remarks</span>
-            <textarea class="admin-remarks" data-id="${escapeHTML(item.complaint_id)}"
-              rows="2" maxlength="1000"
-              placeholder="Write an update or resolution note...">${escapeHTML(item.admin_remarks)}</textarea>
+
+            <textarea
+              class="admin-remarks"
+              data-id="${escapeHTML(item.complaint_id)}"
+              rows="2"
+              maxlength="1000"
+              placeholder="Write an update or resolution note..."
+            >${escapeHTML(item.admin_remarks)}</textarea>
           </label>
 
-          <button class="button primary admin-update-button"
-            data-id="${escapeHTML(item.complaint_id)}">
+          <button
+            class="button primary admin-update-button"
+            data-id="${escapeHTML(item.complaint_id)}"
+          >
             Update Status
           </button>
+
         </div>
 
         ${item.status_history.length ? `
           <details class="status-history">
-            <summary>View status history (${item.status_history.length})</summary>
+
+            <summary>
+              View status history (${item.status_history.length})
+            </summary>
+
             <ul>
               ${item.status_history.map(entry => `
                 <li>
-                  <strong>${escapeHTML(displayStatus(entry.status))}</strong>
+                  <strong>
+                    ${escapeHTML(displayStatus(entry.status))}
+                  </strong>
+
                   <span>${formatDate(entry.changed_at)}</span>
-                  ${entry.remarks ? `<p>${escapeHTML(entry.remarks)}</p>` : ""}
+
+                  ${entry.remarks
+                    ? `<p>${escapeHTML(entry.remarks)}</p>`
+                    : ""}
                 </li>
               `).join("")}
             </ul>
+
           </details>
         ` : ""}
+
       </article>
     `;
   }).join("");
 
   if ($("adminEmpty")) {
-    $("adminEmpty").classList.toggle("show", items.length === 0);
+    $("adminEmpty").classList.toggle(
+      "show",
+      items.length === 0
+    );
   }
 }
 
-/* Save status changes */
+// ==========================================
+// ADMIN UPDATE STATUS
+// ==========================================
+
 if ($("adminComplaints")) {
   $("adminComplaints").addEventListener("click", async event => {
+
     const button = event.target.closest(".admin-update-button");
-    if (!button) return;
+
+    if (!button || !isAdmin) return;
 
     const complaintId = button.dataset.id;
 
@@ -439,12 +666,16 @@ if ($("adminComplaints")) {
     }
 
     const status = statusSelect.value;
-    const adminRemarks = remarksInput ? remarksInput.value.trim() : "";
+
+    const adminRemarks = remarksInput
+      ? remarksInput.value.trim()
+      : "";
 
     button.disabled = true;
     button.textContent = "Updating...";
 
     try {
+
       await apiRequest("update-status", {
         method: "POST",
         headers: {
@@ -462,27 +693,45 @@ if ($("adminComplaints")) {
       await loadComplaints();
 
     } catch (error) {
+
       console.error("Status update failed:", error);
+
       showToast("Status update failed: " + error.message);
+
       button.disabled = false;
       button.textContent = "Update Status";
     }
   });
 }
 
-/* Navigation */
+// ==========================================
+// NAVIGATION
+// ==========================================
+
 function showView(name) {
-  if (!views.includes(name)) return;
+
+  const allowed =
+    name === "dashboard" ||
+    (isStudent && ["report", "complaints"].includes(name)) ||
+    (isAdmin && name === "admin");
+
+  if (!allowed || !views.includes(name)) return;
 
   views.forEach(view => {
+
     const section = $(view + "View");
+
     if (section) {
       section.classList.toggle("active", view === name);
     }
   });
 
   document.querySelectorAll(".nav-link").forEach(button => {
-    button.classList.toggle("active", button.dataset.view === name);
+
+    button.classList.toggle(
+      "active",
+      button.dataset.view === name
+    );
   });
 
   if ($("breadcrumbTitle")) {
@@ -493,55 +742,98 @@ function showView(name) {
     $("sidebar").classList.remove("open");
   }
 
-  if (name === "dashboard" || name === "complaints" || name === "admin") {
+  if (
+    name === "dashboard" ||
+    name === "complaints" ||
+    name === "admin"
+  ) {
     refreshData();
   }
 }
 
+// ==========================================
+// REFRESH DATA
+// ==========================================
+
 async function refreshData() {
+
   try {
+
     await loadComplaints();
+
   } catch (error) {
+
     console.error("Loading complaints failed:", error);
+
     showToast("Unable to load complaints: " + error.message);
   }
 }
 
-/* Navigation buttons */
+// ==========================================
+// NAVIGATION BUTTONS
+// ==========================================
+
 document.querySelectorAll("[data-view], [data-go]").forEach(button => {
+
   button.addEventListener("click", () => {
+
     showView(button.dataset.view || button.dataset.go);
+
   });
 });
 
-/* Mobile menu */
+// ==========================================
+// MOBILE MENU
+// ==========================================
+
 if ($("menuToggle")) {
+
   $("menuToggle").addEventListener("click", () => {
+
     if ($("sidebar")) {
       $("sidebar").classList.toggle("open");
     }
+
   });
 }
 
-/* Complaint filter */
+// ==========================================
+// COMPLAINT FILTER
+// ==========================================
+
 if ($("statusFilter")) {
+
   $("statusFilter").addEventListener("change", render);
+
 }
 
-/* Admin refresh */
+// ==========================================
+// ADMIN REFRESH
+// ==========================================
+
 if ($("refreshAdmin")) {
+
   $("refreshAdmin").addEventListener("click", refreshData);
+
 }
 
-/* Image validation */
+// ==========================================
+// IMAGE VALIDATION
+// ==========================================
+
 if ($("attachment")) {
+
   $("attachment").addEventListener("change", event => {
+
     const file = event.target.files[0];
 
     if (!file) {
+
       if ($("fileHint")) {
-        $("fileHint").textContent = "JPG or PNG only. Maximum size 2 MB.";
+        $("fileHint").textContent =
+          "JPG or PNG only. Maximum size 2 MB.";
       }
+
       return;
     }
 
@@ -549,43 +841,60 @@ if ($("attachment")) {
     const validSize = file.size <= MAX_FILE_SIZE;
 
     if (!validType || !validSize) {
+
       event.target.value = "";
 
       if ($("fileHint")) {
-        $("fileHint").textContent = "Choose a JPG or PNG file up to 2 MB.";
+        $("fileHint").textContent =
+          "Choose a JPG or PNG file up to 2 MB.";
       }
 
       showToast("Choose a JPG or PNG file up to 2 MB.");
+
     } else if ($("fileHint")) {
-      $("fileHint").textContent = `${file.name} selected. Ready to upload.`;
+
+      $("fileHint").textContent =
+        `${file.name} selected. Ready to upload.`;
+
     }
   });
 }
 
-/* Submit complaint */
+// ==========================================
+// STUDENT: SUBMIT COMPLAINT
+// ==========================================
+
 if ($("complaintForm")) {
+
   $("complaintForm").addEventListener("submit", async event => {
+
     event.preventDefault();
 
+    if (!isStudent) {
+      showToast("Only students can submit complaints.");
+      return;
+    }
+
     const form = event.currentTarget;
+
     if (!form.reportValidity()) return;
 
     const formData = new FormData(form);
+
     const selectedFile = $("attachment")
       ? $("attachment").files[0]
       : null;
 
     const payload = {
-      student_id: "student-demo-01",
       title: String(formData.get("title") || "").trim(),
       category: String(formData.get("category") || "").trim(),
       location: String(formData.get("location") || "").trim(),
       description: String(formData.get("description") || "").trim(),
-      priority: String(formData.get("priority") || "medium").toLowerCase(),
       attachment_key: ""
     };
 
     if (selectedFile) {
+
       const validType = ALLOWED_FILE_TYPES.includes(selectedFile.type);
       const validSize = selectedFile.size <= MAX_FILE_SIZE;
 
@@ -596,15 +905,18 @@ if ($("complaintForm")) {
     }
 
     if (DEMO_MODE) {
+
       const list = JSON.parse(
         localStorage.getItem("campusconnect_demo_complaints") || "[]"
       );
 
       list.push({
         ...payload,
+        student_id: userEmail,
         complaint_id: "CC-" + Date.now(),
         status: "submitted",
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        status_history: []
       });
 
       localStorage.setItem(
@@ -613,14 +925,20 @@ if ($("complaintForm")) {
       );
 
       complaintsCache = list.map(normalizeComplaint);
+
       form.reset();
+
       render();
+
       showView("complaints");
+
       showToast("Demo complaint saved.");
+
       return;
     }
 
     try {
+
       if (selectedFile) {
         payload.attachment_key = await uploadAttachment(selectedFile);
       }
@@ -638,10 +956,12 @@ if ($("complaintForm")) {
       form.reset();
 
       if ($("fileHint")) {
-        $("fileHint").textContent = "JPG or PNG only. Maximum size 2 MB.";
+        $("fileHint").textContent =
+          "JPG or PNG only. Maximum size 2 MB.";
       }
 
       await loadComplaints();
+
       showView("complaints");
 
       showToast(
@@ -651,18 +971,27 @@ if ($("complaintForm")) {
       );
 
     } catch (error) {
+
       console.error("Complaint submission failed:", error);
+
       showToast("Submission failed: " + error.message);
+
     }
   });
 }
 
-/* Toast */
+// ==========================================
+// TOAST MESSAGE
+// ==========================================
+
 function showToast(message) {
+
   const toast = $("toast");
+
   if (!toast) return;
 
   toast.textContent = message;
+
   toast.classList.add("show");
 
   clearTimeout(toastTimer);
@@ -672,9 +1001,14 @@ function showToast(message) {
   }, 5000);
 }
 
-/* Initial load */
+// ==========================================
+// INITIALIZE WEBSITE
+// ==========================================
+
+configureRoleInterface();
+
 render();
 
-if (API_BASE && !DEMO_MODE) {
+if (API_BASE && !DEMO_MODE && campusToken) {
   refreshData();
 }
