@@ -56,7 +56,6 @@ Please log in to the CampusConnect dashboard to review this complaint.
             Subject="New CampusConnect Complaint",
             Message=message
         )
-
         print("SNS notification published successfully")
 
     except ClientError as error:
@@ -110,7 +109,6 @@ def lambda_handler(event, context):
                 )
 
             extension = allowed_types[content_type]
-
             object_key = f"attachments/{uuid.uuid4()}.{extension}"
 
             upload_url = s3.generate_presigned_url(
@@ -131,8 +129,8 @@ def lambda_handler(event, context):
                 }
             )
 
-        except ClientError:
-            print("S3 presigned URL generation failed")
+        except ClientError as error:
+            print("S3 presigned URL generation failed:", error)
             return response(
                 500,
                 {"error": "Could not generate upload URL"}
@@ -158,6 +156,129 @@ def lambda_handler(event, context):
             return response(
                 500,
                 {"error": "Could not load complaints"}
+            )
+
+    # Update complaint status (Admin feature)
+    if method == "POST" and path == "/update-status":
+        try:
+            body = json.loads(event.get("body") or "{}")
+
+            if not isinstance(body, dict):
+                return response(
+                    400,
+                    {"error": "Request body must be a JSON object"}
+                )
+
+            complaint_id = str(
+                body.get("complaint_id", "")
+            ).strip()
+
+            new_status = str(
+                body.get("status", "")
+            ).strip().lower()
+
+            admin_remarks = str(
+                body.get("admin_remarks", "")
+            ).strip()[:1000]
+
+            allowed_statuses = {
+                "pending",
+                "in_progress",
+                "completed",
+                "rejected"
+            }
+
+            if not complaint_id:
+                return response(
+                    400,
+                    {"error": "Complaint ID is required"}
+                )
+
+            if new_status not in allowed_statuses:
+                return response(
+                    400,
+                    {"error": "Invalid complaint status"}
+                )
+
+            current_time = datetime.now(timezone.utc).isoformat()
+
+            history_entry = {
+                "status": new_status,
+                "remarks": admin_remarks,
+                "changed_at": current_time
+            }
+
+            update_expression = """
+                SET #status = :status,
+                    updated_at = :updated_at,
+                    admin_remarks = :remarks,
+                    status_history = list_append(
+                        if_not_exists(status_history, :empty_list),
+                        :history
+                    )
+            """
+
+            expression_values = {
+                ":status": new_status,
+                ":updated_at": current_time,
+                ":remarks": admin_remarks,
+                ":empty_list": [],
+                ":history": [history_entry]
+            }
+
+            if new_status == "completed":
+                update_expression += ", resolved_at = :resolved_at"
+                expression_values[":resolved_at"] = current_time
+
+            else:
+                update_expression += " REMOVE resolved_at"
+
+            result = table.update_item(
+                Key={
+                    "complaint_id": complaint_id
+                },
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={
+                    "#status": "status"
+                },
+                ExpressionAttributeValues=expression_values,
+                ConditionExpression="attribute_exists(complaint_id)",
+                ReturnValues="ALL_NEW"
+            )
+
+            print("Complaint status updated:", complaint_id, new_status)
+
+            return response(
+                200,
+                {
+                    "message": "Complaint status updated successfully",
+                    "item": result.get("Attributes", {})
+                }
+            )
+
+        except json.JSONDecodeError:
+            return response(400, {"error": "Invalid JSON"})
+
+        except ClientError as error:
+            error_code = error.response["Error"]["Code"]
+            print("Complaint status update failed:", error)
+
+            if error_code == "ConditionalCheckFailedException":
+                return response(
+                    404,
+                    {"error": "Complaint not found"}
+                )
+
+            return response(
+                500,
+                {"error": "Could not update complaint status"}
+            )
+
+        except Exception as error:
+            print("Unexpected status update error:", str(error))
+            return response(
+                500,
+                {"error": "Internal server error"}
             )
 
     # Register a new complaint
@@ -255,15 +376,21 @@ def lambda_handler(event, context):
                 "status": "submitted",
                 "created_at": current_time,
                 "updated_at": current_time,
-                "attachment_key": attachment_key
+                "attachment_key": attachment_key,
+                "status_history": [
+                    {
+                        "status": "submitted",
+                        "remarks": "Complaint registered",
+                        "changed_at": current_time
+                    }
+                ]
             }
 
-            # Save complaint in DynamoDB
             table.put_item(Item=item)
 
             print("Complaint saved successfully:", item["complaint_id"])
 
-            # SNS notification temporarily disabled
+            # SNS notification remains disabled
             print("SNS notification temporarily disabled")
 
             return response(201, {"item": item})
