@@ -64,10 +64,6 @@
       margin-bottom: 18px;
     }
 
-    .full-width {
-      grid-column: 1 / -1;
-    }
-
     label {
       display: block;
       font-size: 14px;
@@ -110,17 +106,6 @@
       margin-bottom: 18px;
     }
 
-    .notice {
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.5;
-      margin-top: 10px;
-      background: #fff7ed;
-      color: #9a3412;
-      border: 1px solid #fed7aa;
-    }
-
     .submit-btn {
       width: 100%;
       padding: 14px;
@@ -161,10 +146,6 @@
       text-align: center;
       font-size: 14px;
       line-height: 1.5;
-    }
-
-    .hidden {
-      display: none;
     }
 
     @media(max-width:550px) {
@@ -216,7 +197,6 @@
 
     </div>
 
-    <!-- Password Details -->
     <div class="form-grid">
 
       <div class="form-group">
@@ -240,53 +220,43 @@
 
     </div>
 
-    <div class="form-group">
-      <label for="role">Select Your Role</label>
-      <select id="role" required>
-        <option value="student">Student</option>
-        <option value="analyst">Analyst</option>
-        <option value="admin">Administrator</option>
-      </select>
-    </div>
-
-    <!-- Student Details -->
-    <div id="studentFields" class="role-section">
+    <div class="role-section">
 
       <h3>Student Details</h3>
 
       <div class="form-group">
         <label for="studentId">Student ID / Roll Number</label>
         <input type="text" id="studentId"
-          placeholder="Enter your roll number">
+          placeholder="Enter your roll number" required>
       </div>
 
       <div class="form-grid">
 
         <div class="form-group">
           <label for="course">Course</label>
-          <select id="course">
+          <select id="course" required>
             <option value="">Select Course</option>
-            <option>B.Tech</option>
-            <option>BCA</option>
-            <option>MCA</option>
-            <option>MBA</option>
-            <option>BBA</option>
-            <option>Other</option>
+            <option value="B.Tech">B.Tech</option>
+            <option value="BCA">BCA</option>
+            <option value="MCA">MCA</option>
+            <option value="MBA">MBA</option>
+            <option value="BBA">BBA</option>
+            <option value="Other">Other</option>
           </select>
         </div>
 
         <div class="form-group">
           <label for="semester">Semester</label>
-          <select id="semester">
+          <select id="semester" required>
             <option value="">Select Semester</option>
-            <option>1st Semester</option>
-            <option>2nd Semester</option>
-            <option>3rd Semester</option>
-            <option>4th Semester</option>
-            <option>5th Semester</option>
-            <option>6th Semester</option>
-            <option>7th Semester</option>
-            <option>8th Semester</option>
+            <option value="1st Semester">1st Semester</option>
+            <option value="2nd Semester">2nd Semester</option>
+            <option value="3rd Semester">3rd Semester</option>
+            <option value="4th Semester">4th Semester</option>
+            <option value="5th Semester">5th Semester</option>
+            <option value="6th Semester">6th Semester</option>
+            <option value="7th Semester">7th Semester</option>
+            <option value="8th Semester">8th Semester</option>
           </select>
         </div>
 
@@ -294,88 +264,15 @@
 
       <div class="form-group">
         <label for="studentDepartment">Department</label>
-        <select id="studentDepartment">
+        <select id="studentDepartment" required>
           <option value="">Select Department</option>
-          <option>Computer Science</option>
-          <option>Electronics</option>
-          <option>Mechanical</option>
-          <option>Civil</option>
-          <option>Management</option>
-          <option>Other</option>
+          <option value="Computer Science">Computer Science</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="Civil">Civil</option>
+          <option value="Management">Management</option>
+          <option value="Other">Other</option>
         </select>
-      </div>
-
-    </div>
-
-    <!-- Analyst Details -->
-    <div id="analystFields" class="role-section hidden">
-
-      <h3>Analyst Details</h3>
-
-      <div class="form-group">
-        <label for="analystId">Employee ID</label>
-        <input type="text" id="analystId"
-          placeholder="Enter employee ID">
-      </div>
-
-      <div class="form-group">
-        <label for="analystDepartment">Department</label>
-        <select id="analystDepartment">
-          <option value="">Select Department</option>
-          <option>Computer Science</option>
-          <option>Electronics</option>
-          <option>Mechanical</option>
-          <option>Civil</option>
-          <option>Management</option>
-          <option>Administration</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="analystDesignation">Designation</label>
-        <input type="text" id="analystDesignation"
-          placeholder="Enter designation">
-      </div>
-
-      <div class="notice">
-        Analyst registration requires verification and approval.
-      </div>
-
-    </div>
-
-    <!-- Admin Details -->
-    <div id="adminFields" class="role-section hidden">
-
-      <h3>Administrator Details</h3>
-
-      <div class="form-group">
-        <label for="adminId">Employee ID</label>
-        <input type="text" id="adminId"
-          placeholder="Enter employee ID">
-      </div>
-
-      <div class="form-group">
-        <label for="adminDepartment">Department</label>
-        <select id="adminDepartment">
-          <option value="">Select Department</option>
-          <option>Computer Science</option>
-          <option>Electronics</option>
-          <option>Mechanical</option>
-          <option>Civil</option>
-          <option>Management</option>
-          <option>Administration</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="adminDesignation">Designation</label>
-        <input type="text" id="adminDesignation"
-          placeholder="Enter designation">
-      </div>
-
-      <div class="notice">
-        Administrator registration requires approval from an
-        existing authorized administrator.
       </div>
 
     </div>
@@ -397,200 +294,109 @@
 
 <script>
 
-  // AWS Lambda Registration API
-  const API_URL =
-    "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
+const API_URL =
+  "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
 
-  const roleSelect = document.getElementById("role");
+const form = document.getElementById("registerForm");
+const message = document.getElementById("message");
+const registerBtn = document.getElementById("registerBtn");
 
-  const sections = {
-    student: document.getElementById("studentFields"),
-    analyst: document.getElementById("analystFields"),
-    admin: document.getElementById("adminFields")
+form.addEventListener("submit", async function(event) {
+
+  event.preventDefault();
+
+  const password = document.getElementById("password").value;
+  const confirmPassword =
+    document.getElementById("confirmPassword").value;
+
+  if (password.length < 8 || password.length > 128) {
+    message.style.color = "#dc2626";
+    message.textContent =
+      "Password must contain between 8 and 128 characters.";
+    return;
+  }
+
+  const passwordPattern =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,128}$/;
+
+  if (!passwordPattern.test(password)) {
+    message.style.color = "#dc2626";
+    message.textContent =
+      "Password must contain uppercase, lowercase and at least one number.";
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    message.style.color = "#dc2626";
+    message.textContent =
+      "Password and Confirm Password do not match.";
+    return;
+  }
+
+  const userData = {
+    full_name: document.getElementById("name").value.trim(),
+    email: document.getElementById("email").value.trim().toLowerCase(),
+    mobile: document.getElementById("mobile").value.trim(),
+    role: "student",
+    password: password,
+    roll_number: document.getElementById("studentId").value.trim(),
+    course: document.getElementById("course").value,
+    semester: document.getElementById("semester").value,
+    department: document.getElementById("studentDepartment").value
   };
 
-  const form = document.getElementById("registerForm");
-  const message = document.getElementById("message");
-  const registerBtn = document.getElementById("registerBtn");
+  message.style.color = "#b45309";
+  message.textContent = "Submitting your registration...";
 
-  // Show fields according to selected role
-  function updateRoleFields() {
+  registerBtn.disabled = true;
+  registerBtn.textContent = "Please wait...";
 
-    const selectedRole = roleSelect.value;
+  try {
 
-    Object.entries(sections).forEach(([role, section]) => {
-
-      const visible = role === selectedRole;
-
-      section.classList.toggle("hidden", !visible);
-
-      section.querySelectorAll("input, select").forEach(field => {
-        field.required = visible;
-      });
-
+    const apiResponse = await fetch(API_URL + "register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(userData)
     });
+
+    const result = await apiResponse.json();
+
+    if (!apiResponse.ok) {
+      throw new Error(
+        result.message || result.error ||
+        "Registration failed. Please try again."
+      );
+    }
+
+    message.style.color = "#15803d";
+    message.textContent =
+      "Registration successful! Your student account is active. Please login to continue.";
+
+    form.reset();
+
+  } catch (error) {
+
+    console.error("Registration error:", error);
+
+    message.style.color = "#dc2626";
+
+    if (error instanceof TypeError) {
+      message.textContent =
+        "Unable to connect to the server. Please check your internet connection or API CORS settings.";
+    } else {
+      message.textContent = error.message;
+    }
+
+  } finally {
+
+    registerBtn.disabled = false;
+    registerBtn.textContent = "Register Now";
 
   }
 
-  roleSelect.addEventListener("change", updateRoleFields);
-
-  updateRoleFields();
-
-  // Registration form submission
-  form.addEventListener("submit", async function(event) {
-
-    event.preventDefault();
-
-    const password = document.getElementById("password").value;
-    const confirmPassword =
-      document.getElementById("confirmPassword").value;
-
-    // Password length validation
-    if (password.length < 8 || password.length > 128) {
-      message.style.color = "#dc2626";
-      message.textContent =
-        "Password must contain between 8 and 128 characters.";
-      return;
-    }
-
-    // Password complexity validation
-    const passwordPattern =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,128}$/;
-
-    if (!passwordPattern.test(password)) {
-      message.style.color = "#dc2626";
-      message.textContent =
-        "Password must contain uppercase, lowercase and at least one number.";
-      return;
-    }
-
-    // Confirm password validation
-    if (password !== confirmPassword) {
-      message.style.color = "#dc2626";
-      message.textContent =
-        "Password and Confirm Password do not match.";
-      return;
-    }
-
-    message.style.color = "#b45309";
-    message.textContent = "Submitting your registration...";
-
-    registerBtn.disabled = true;
-    registerBtn.textContent = "Please wait...";
-
-    const selectedRole = roleSelect.value;
-
-    // Map HTML role value to Lambda role value
-    const apiRole =
-      selectedRole === "admin" ? "administrator" : selectedRole;
-
-    // Common registration details
-    const userData = {
-      full_name: document.getElementById("name").value.trim(),
-      email: document.getElementById("email").value.trim().toLowerCase(),
-      mobile: document.getElementById("mobile").value.trim(),
-      role: apiRole,
-      password: password
-    };
-
-    // Add student details
-    if (selectedRole === "student") {
-
-      userData.roll_number =
-        document.getElementById("studentId").value.trim();
-
-      userData.course =
-        document.getElementById("course").value;
-
-      userData.semester =
-        document.getElementById("semester").value;
-
-      userData.department =
-        document.getElementById("studentDepartment").value;
-
-    }
-
-    // Add analyst details
-    if (selectedRole === "analyst") {
-
-      userData.employee_id =
-        document.getElementById("analystId").value.trim();
-
-      userData.department =
-        document.getElementById("analystDepartment").value;
-
-      userData.designation =
-        document.getElementById("analystDesignation").value.trim();
-
-    }
-
-    // Add administrator details
-    if (selectedRole === "admin") {
-
-      userData.employee_id =
-        document.getElementById("adminId").value.trim();
-
-      userData.department =
-        document.getElementById("adminDepartment").value;
-
-      userData.designation =
-        document.getElementById("adminDesignation").value.trim();
-
-    }
-
-    try {
-
-      const response = await fetch(API_URL + "register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(userData)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result.message || result.error ||
-          "Registration failed. Please try again."
-        );
-      }
-
-      message.style.color = "#15803d";
-
-      if (result.account_status === "active") {
-        message.textContent =
-          "Registration successful! Your account is active. Please login to continue.";
-      } else {
-        message.textContent =
-          "Registration submitted successfully. Your account is awaiting approval.";
-      }
-
-      form.reset();
-      updateRoleFields();
-
-    } catch (error) {
-
-      console.error("Registration error:", error);
-
-      message.style.color = "#dc2626";
-
-      if (error instanceof TypeError) {
-        message.textContent =
-          "Unable to connect to the server. Please check your internet connection or API CORS settings.";
-      } else {
-        message.textContent = error.message;
-      }
-
-    } finally {
-
-      registerBtn.disabled = false;
-      registerBtn.textContent = "Register Now";
-
-    }
-
-  });
+});
 
 </script>
 
