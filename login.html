@@ -38,62 +38,130 @@
     }
 
     .brand { text-align: center; margin-bottom: 32px; }
+
     .brand-icon {
-      width: 52px; height: 52px; background: #eaf1ff;
-      color: #2563eb; border-radius: 14px; display: flex;
-      align-items: center; justify-content: center;
-      font-size: 25px; font-weight: 800; margin: 0 auto 15px;
+      width: 52px;
+      height: 52px;
+      background: #eaf1ff;
+      color: #2563eb;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 25px;
+      font-weight: 800;
+      margin: 0 auto 15px;
     }
-    .brand h1 { font-size: 25px; font-weight: 800; letter-spacing: -0.8px; }
+
+    .brand h1 {
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+    }
+
     .brand h1 span { color: #2563eb; }
     .brand p { color: #7b8496; font-size: 13px; margin-top: 8px; }
     .heading { margin-bottom: 25px; }
     .heading h2 { font-size: 21px; margin-bottom: 7px; }
     .heading p { font-size: 13px; color: #7b8496; }
     .form-group { margin-bottom: 20px; }
+
     label {
-      display: block; font-size: 13px; font-weight: 600;
-      margin-bottom: 8px; color: #374151;
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #374151;
     }
-    input {
-      width: 100%; padding: 13px 14px; border: 1px solid #dce2eb;
-      border-radius: 9px; font-size: 14px; outline: none;
-      background: #ffffff; color: #172033; transition: 0.2s;
+
+    input, select {
+      width: 100%;
+      padding: 13px 14px;
+      border: 1px solid #dce2eb;
+      border-radius: 9px;
+      font-size: 14px;
+      outline: none;
+      background: #ffffff;
+      color: #172033;
+      transition: 0.2s;
     }
-    input:focus {
+
+    input:focus, select:focus {
       border-color: #2563eb;
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
+
     .password-wrapper { position: relative; }
     .password-wrapper input { padding-right: 65px; }
+
     .toggle-password {
-      position: absolute; right: 13px; top: 50%;
-      transform: translateY(-50%); border: none;
-      background: none; color: #2563eb; font-size: 12px;
-      font-weight: 600; cursor: pointer;
+      position: absolute;
+      right: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
     }
+
     .login-btn {
-      width: 100%; padding: 14px; background: #2563eb;
-      color: white; border: none; border-radius: 9px;
-      font-size: 14px; font-weight: 700; cursor: pointer;
+      width: 100%;
+      padding: 14px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 9px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
       transition: 0.2s;
     }
-    .login-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
-    .login-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+
+    .login-btn:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+
+    .login-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+
     .message {
-      display: none; padding: 12px; border-radius: 8px;
-      font-size: 12px; margin-top: 15px; line-height: 1.5;
+      display: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-top: 15px;
+      line-height: 1.5;
     }
+
     .register-link {
-      text-align: center; margin-top: 25px;
-      color: #7b8496; font-size: 13px;
+      text-align: center;
+      margin-top: 25px;
+      color: #7b8496;
+      font-size: 13px;
     }
-    a { color: #2563eb; text-decoration: none; font-weight: 600; }
+
+    a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
     a:hover { text-decoration: underline; }
+
     .footer {
-      text-align: center; color: #a0a7b4;
-      font-size: 11px; margin-top: 28px;
+      text-align: center;
+      color: #a0a7b4;
+      font-size: 11px;
+      margin-top: 28px;
     }
+
     @media (max-width: 480px) {
       .login-container { padding: 32px 23px; }
     }
@@ -102,6 +170,7 @@
 
 <body>
   <div class="login-container">
+
     <div class="brand">
       <div class="brand-icon">C</div>
       <h1>Campus<span>Connect</span></h1>
@@ -110,34 +179,66 @@
 
     <div class="heading">
       <h2>Welcome Back</h2>
-      <p>Sign in using your registered email address.</p>
+      <p>Sign in using your registered account details.</p>
     </div>
 
     <form id="loginForm">
+
       <div class="form-group">
         <label for="email">Email Address</label>
-        <input type="email" id="email"
+        <input
+          type="email"
+          id="email"
           placeholder="Enter your registered email"
-          autocomplete="username" required>
+          autocomplete="username"
+          required
+        >
       </div>
 
       <div class="form-group">
         <label for="password">Password</label>
+
         <div class="password-wrapper">
-          <input type="password" id="password"
+          <input
+            type="password"
+            id="password"
             placeholder="Enter your password"
-            autocomplete="current-password" required>
-          <button type="button" class="toggle-password" id="togglePassword">
+            autocomplete="current-password"
+            required
+          >
+
+          <button
+            type="button"
+            class="toggle-password"
+            id="togglePassword"
+          >
             Show
           </button>
         </div>
+      </div>
+
+      <div class="form-group">
+        <label for="role">Select Role</label>
+
+        <select id="role" required>
+          <option value="">Select your role</option>
+          <option value="student">Student</option>
+          <option value="analyst">Analyst</option>
+          <option value="administrator">Administrator</option>
+        </select>
       </div>
 
       <button type="submit" class="login-btn" id="loginBtn">
         Sign In
       </button>
 
-      <div class="message" id="message" role="status" aria-live="polite"></div>
+      <div
+        class="message"
+        id="message"
+        role="status"
+        aria-live="polite"
+      ></div>
+
     </form>
 
     <div class="register-link">
@@ -148,6 +249,7 @@
     <div class="footer">
       © 2026 CampusConnect. All rights reserved.
     </div>
+
   </div>
 
   <script>
@@ -159,6 +261,7 @@
 
     togglePassword.addEventListener("click", function () {
       const isHidden = passwordInput.type === "password";
+
       passwordInput.type = isHidden ? "text" : "password";
       togglePassword.textContent = isHidden ? "Hide" : "Show";
     });
@@ -186,11 +289,17 @@
     loginForm.addEventListener("submit", async function (event) {
       event.preventDefault();
 
-      const email = document.getElementById("email").value.trim().toLowerCase();
-      const password = passwordInput.value;
+      const email = document.getElementById("email")
+        .value.trim().toLowerCase();
 
-      if (!email || !password) {
-        showMessage("Please enter your email and password.", "error");
+      const password = passwordInput.value;
+      const role = document.getElementById("role").value;
+
+      if (!email || !password || !role) {
+        showMessage(
+          "Please enter your email, password and select your role.",
+          "error"
+        );
         return;
       }
 
@@ -199,9 +308,6 @@
       message.style.display = "none";
 
       try {
-        // TEMPORARY DEBUG LINE
-        console.log("Login API URL:", `${API_BASE}/login`);
-
         const apiResponse = await fetch(`${API_BASE}/login`, {
           method: "POST",
           headers: {
@@ -209,31 +315,42 @@
           },
           body: JSON.stringify({
             email: email,
-            password: password
+            password: password,
+            role: role
           })
         });
 
         const result = await apiResponse.json();
 
         if (!apiResponse.ok) {
-          if (apiResponse.status === 401) {
-            throw new Error("Invalid email or password.");
-          }
-          if (apiResponse.status === 403) {
-            throw new Error("Your account is pending admin approval.");
-          }
-          throw new Error(result.error || "Login failed. Please try again.");
+          throw new Error(
+            result.error ||
+            result.message ||
+            "Login failed. Please check your credentials and selected role."
+          );
         }
 
         if (!result.token || !result.user) {
           throw new Error("Invalid login response from server.");
         }
 
+        // Confirm the server returned the selected role
+        if (result.user.role !== role) {
+          throw new Error("The selected role does not match your account.");
+        }
+
         sessionStorage.setItem("campusToken", result.token);
-        sessionStorage.setItem("campusUser", JSON.stringify(result.user));
+
+        sessionStorage.setItem(
+          "campusUser",
+          JSON.stringify(result.user)
+        );
+
+        const expiresIn = Number(result.expires_in) || 3600;
+
         sessionStorage.setItem(
           "campusTokenExpiry",
-          String(Date.now() + (result.expires_in * 1000))
+          String(Date.now() + (expiresIn * 1000))
         );
 
         showMessage(
@@ -251,7 +368,8 @@
         console.error("Login error:", error);
 
         showMessage(
-          error.message || "Unable to connect to the server. Please try again.",
+          error.message ||
+          "Unable to connect to the server. Please try again.",
           "error"
         );
 
@@ -260,5 +378,6 @@
       }
     });
   </script>
+
 </body>
 </html>
