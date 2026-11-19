@@ -24,6 +24,23 @@ ALLOWED_ORIGIN = os.environ["ALLOWED_ORIGIN"]
 S3_BUCKET = os.environ["S3_BUCKET"]
 AUTH_SECRET = os.environ["AUTH_SECRET"]
 
+# Administrator credentials
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+# Multiple analyst accounts
+ANALYST_ACCOUNTS = json.loads(
+    os.environ.get("ANALYST_ACCOUNTS", "[]")
+)
+
+ANALYST_ACCOUNTS = {
+    account["email"].strip().lower(): {
+        "password": account["password"],
+        "name": account.get("name", "Analyst")
+    }
+    for account in ANALYST_ACCOUNTS
+}
+
 dynamodb = boto3.resource("dynamodb")
 
 table = dynamodb.Table(TABLE_NAME)
@@ -168,7 +185,6 @@ def authenticate_user(event):
     )
 
     if not authorization.startswith("Bearer "):
-
         return None, response(401, {
             "error": "Authentication required. Please log in."
         })
@@ -176,7 +192,6 @@ def authenticate_user(event):
     token = authorization[7:].strip()
 
     try:
-
         parts = token.split(".")
 
         if len(parts) != 2:
@@ -224,13 +239,45 @@ def authenticate_user(event):
             raise ValueError("Invalid role")
 
     except Exception:
-
         return None, response(401, {
             "error": "Invalid authentication token. Please log in again."
         })
 
-    # Check current account status and role in DynamoDB.
+    # ==========================================
+    # ADMINISTRATOR AUTHENTICATION
+    # ==========================================
+    if role == "administrator":
 
+        if not ADMIN_EMAIL or email != ADMIN_EMAIL:
+            return None, response(401, {
+                "error": "Administrator account is not authorized"
+            })
+
+        return {
+            "email": email,
+            "role": "administrator",
+            "full_name": "Administrator"
+        }, None
+
+    # ==========================================
+    # ANALYST AUTHENTICATION
+    # ==========================================
+    if role == "analyst":
+
+        if email not in ANALYST_ACCOUNTS:
+            return None, response(401, {
+                "error": "Analyst account is not authorized"
+            })
+
+        return {
+            "email": email,
+            "role": "analyst",
+            "full_name": ANALYST_ACCOUNTS[email]["name"]
+        }, None
+
+    # ==========================================
+    # STUDENT AUTHENTICATION
+    # ==========================================
     try:
 
         result = users_table.get_item(
@@ -253,20 +300,28 @@ def authenticate_user(event):
             user.get("requested_role", "")
         ).lower()
 
-        if current_role != role:
+        if current_role != "student":
             return None, response(401, {
                 "error": "Account role has changed. Please log in again."
             })
 
         return {
             "email": email,
-            "role": role,
+            "role": "student",
             "full_name": user.get("full_name", "")
         }, None
 
     except ClientError as error:
 
         print("Authentication DynamoDB error:", error)
+
+        return None, response(500, {
+            "error": "Unable to verify your account"
+        })
+
+    except Exception as error:
+
+        print("Authentication error:", str(error))
 
         return None, response(500, {
             "error": "Unable to verify your account"
@@ -311,6 +366,12 @@ def register_user(body):
             "error": "Please fill in all required fields"
         })
 
+    # Only student registration is allowed
+    if role != "student":
+        return response(403, {
+            "error": "Only students can register through this website"
+        })
+
     if not isinstance(password, str):
         return response(400, {
             "error": "Invalid password"
@@ -331,11 +392,6 @@ def register_user(body):
             "error": "Invalid mobile number"
         })
 
-    if role not in {"student", "analyst", "administrator"}:
-        return response(400, {
-            "error": "Invalid registration role"
-        })
-
     if len(password) < 8 or len(password) > 128:
         return response(400, {
             "error": "Password must contain 8 to 128 characters"
@@ -350,69 +406,48 @@ def register_user(body):
             "error": "Password must contain uppercase, lowercase and numeric characters"
         })
 
+    # Prevent registration using fixed admin or analyst emails
+    if email == ADMIN_EMAIL or email in ANALYST_ACCOUNTS:
+        return response(409, {
+            "error": "This email is reserved for an authorized account"
+        })
+
     password_hash = hash_password(password)
 
     current_time = datetime.now(timezone.utc).isoformat()
-
-    account_status = (
-        "active" if role == "student"
-        else "pending_approval"
-    )
 
     item = {
         "email": email,
         "full_name": full_name,
         "mobile": mobile,
-        "requested_role": role,
-        "account_status": account_status,
+        "requested_role": "student",
+        "account_status": "active",
         "password_hash": password_hash,
         "created_at": current_time
     }
 
-    if role == "student":
+    # Student details
+    roll_number = str(body.get("roll_number", "")).strip()
+    course = str(body.get("course", "")).strip()
+    semester = str(body.get("semester", "")).strip()
+    department = str(body.get("department", "")).strip()
 
-        roll_number = str(body.get("roll_number", "")).strip()
-        course = str(body.get("course", "")).strip()
-        semester = str(body.get("semester", "")).strip()
-        department = str(body.get("department", "")).strip()
-
-        if not all([
-            roll_number,
-            course,
-            semester,
-            department
-        ]):
-            return response(400, {
-                "error": "Complete all student details"
-            })
-
-        item.update({
-            "roll_number": roll_number[:50],
-            "course": course[:100],
-            "semester": semester[:30],
-            "department": department[:100]
+    if not all([
+        roll_number,
+        course,
+        semester,
+        department
+    ]):
+        return response(400, {
+            "error": "Complete all student details"
         })
 
-    else:
-
-        employee_id = str(body.get("employee_id", "")).strip()
-        department = str(body.get("department", "")).strip()
-        designation = str(body.get("designation", "")).strip()
-
-        if not all([
-            employee_id,
-            department,
-            designation
-        ]):
-            return response(400, {
-                "error": "Complete all employee details"
-            })
-
-        item.update({
-            "employee_id": employee_id[:50],
-            "department": department[:100],
-            "designation": designation[:100]
-        })
+    item.update({
+        "roll_number": roll_number[:50],
+        "course": course[:100],
+        "semester": semester[:30],
+        "department": department[:100]
+    })
 
     try:
 
@@ -421,25 +456,14 @@ def register_user(body):
             ConditionExpression="attribute_not_exists(email)"
         )
 
-        if role == "student":
-
-            message = (
+        return response(201, {
+            "message": (
                 "Student registration successful. "
                 "Your account is active. You can now log in."
-            )
-
-        else:
-
-            message = (
-                "Registration submitted successfully. "
-                "Your account requires admin approval."
-            )
-
-        return response(201, {
-            "message": message,
+            ),
             "email": email,
-            "role": role,
-            "account_status": account_status
+            "role": "student",
+            "account_status": "active"
         })
 
     except ClientError as error:
@@ -463,79 +487,89 @@ def register_user(body):
 # ==========================================
 
 def login_user(body):
-
-    if not isinstance(body, dict):
-        return response(400, {
-            "error": "Invalid request body"
-        })
-
-    email = str(body.get("email", "")).strip().lower()
+    email = body.get("email", "").strip().lower()
     password = body.get("password", "")
 
     if not email or not password:
         return response(400, {
-            "error": "Email and password are required"
+            "message": "Email and password are required"
         })
 
-    if not isinstance(password, str):
-        return response(400, {
-            "error": "Invalid email or password"
-        })
-
-    try:
-
-        result = users_table.get_item(
-            Key={"email": email}
-        )
-
-        user = result.get("Item")
-
-        if not user or not verify_password(
-            password,
-            user.get("password_hash", "")
-        ):
+    # ==========================================
+    # ADMINISTRATOR LOGIN
+    # ==========================================
+    if email == ADMIN_EMAIL and ADMIN_EMAIL:
+        if not hmac.compare_digest(password, ADMIN_PASSWORD):
             return response(401, {
-                "error": "Invalid email or password"
+                "message": "Invalid email or password"
             })
 
-        if user.get("account_status") != "active":
-            return response(403, {
-                "error": "Your account is pending admin approval"
+        role = "administrator"
+        full_name = "Administrator"
+
+    # ==========================================
+    # ANALYST LOGIN
+    # ==========================================
+    elif email in ANALYST_ACCOUNTS:
+        analyst = ANALYST_ACCOUNTS[email]
+
+        if not hmac.compare_digest(password, analyst["password"]):
+            return response(401, {
+                "message": "Invalid email or password"
             })
 
-        role = user.get("requested_role", "student")
+        role = "analyst"
+        full_name = analyst["name"]
 
-        token = generate_login_token(email, role)
+    # ==========================================
+    # STUDENT LOGIN
+    # ==========================================
+    else:
+        try:
+            result = users_table.get_item(
+                Key={"email": email}
+            )
+            user = result.get("Item")
 
-        return response(200, {
-            "message": "Login successful",
-            "token": token,
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "user": {
-                "email": email,
-                "full_name": user.get("full_name", ""),
-                "role": role,
-                "account_status": user.get("account_status", "")
-            }
-        })
+            if not user or not verify_password(
+                password, user.get("password_hash", "")
+            ):
+                return response(401, {
+                    "message": "Invalid email or password"
+                })
 
-    except ClientError as error:
+            if user.get("account_status") != "active":
+                return response(403, {
+                    "message": "Your account is not active"
+                })
 
-        print("Login DynamoDB error:", error)
+            if user.get("requested_role") != "student":
+                return response(403, {
+                    "message": "This account is not authorized"
+                })
 
-        return response(500, {
-            "error": "Unable to process login"
-        })
+            role = "student"
+            full_name = user.get("full_name", "Student")
 
-    except Exception as error:
+        except ClientError:
+            return response(500, {
+                "message": "Unable to access user account"
+            })
 
-        print("Login error:", str(error))
+    # ==========================================
+    # GENERATE LOGIN TOKEN
+    # ==========================================
+    token = generate_login_token(email, role)
 
-        return response(500, {
-            "error": "Internal server error"
-        })
-
+    return response(200, {
+        "message": "Login successful",
+        "token": token,
+        "user": {
+            "email": email,
+            "full_name": full_name,
+            "role": role
+        }
+    })
 
 # ==========================================
 # GET COMPLAINTS
