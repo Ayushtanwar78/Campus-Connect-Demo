@@ -972,24 +972,20 @@ def lambda_handler(event, context):
 
     path = event.get("rawPath", "/").rstrip("/") or "/"
 
-    if method == "OPTIONS":
-        return response(200, { 
-            "message": "CORS Preflight Successful"
-        })
-
     # --------------------------------------
     # CORS PREFLIGHT
     # --------------------------------------
 
     if method == "OPTIONS":
-        return response(200, {"ok": True})
+        return response(200, {
+            "message": "CORS preflight successful"
+        })
 
     # --------------------------------------
     # HEALTH CHECK
     # --------------------------------------
 
     if method == "GET" and path == "/health":
-
         return response(200, {
             "status": "ok"
         })
@@ -999,23 +995,17 @@ def lambda_handler(event, context):
     # --------------------------------------
 
     if method == "POST" and path == "/login":
-
         try:
-
             body = get_request_body(event)
-
             return login_user(body)
 
         except json.JSONDecodeError:
-
             return response(400, {
                 "error": "Invalid JSON"
             })
 
         except Exception as error:
-
             print("Login API error:", str(error))
-
             return response(500, {
                 "error": "Internal server error"
             })
@@ -1025,23 +1015,17 @@ def lambda_handler(event, context):
     # --------------------------------------
 
     if method == "POST" and path == "/register":
-
         try:
-
             body = get_request_body(event)
-
             return register_user(body)
 
         except json.JSONDecodeError:
-
             return response(400, {
                 "error": "Invalid JSON"
             })
 
         except Exception as error:
-
             print("Registration API error:", str(error))
-
             return response(500, {
                 "error": "Internal server error"
             })
@@ -1051,13 +1035,10 @@ def lambda_handler(event, context):
     # --------------------------------------
 
     protected_routes = {
-        (method, path)
-        for method, path in [
-            ("GET", "/complaints"),
-            ("POST", "/complaints"),
-            ("POST", "/upload-url"),
-            ("POST", "/update-status")
-        ]
+        ("GET", "/complaints"),
+        ("POST", "/complaints"),
+        ("POST", "/upload-url"),
+        ("POST", "/update-status")
     }
 
     if (method, path) in protected_routes:
@@ -1068,20 +1049,21 @@ def lambda_handler(event, context):
             return auth_error
 
         # ----------------------------------
-        # STUDENT AND ADMIN COMPLAINT ACCESS
+        # STUDENT, ADMIN AND ANALYST:
+        # VIEW COMPLAINTS
         # ----------------------------------
-        
+
         if method == "GET" and path == "/complaints":
 
-         permission_error = require_role(
-        user,
-        {"student", "administrator", "analyst"}
-    )
+            permission_error = require_role(
+                user,
+                {"student", "administrator", "analyst"}
+            )
 
-        if permission_error:
-          return permission_error
+            if permission_error:
+                return permission_error
 
-        return get_complaints(user)
+            return get_complaints(user)
 
         # ----------------------------------
         # STUDENT ONLY: CREATE COMPLAINT
@@ -1098,21 +1080,16 @@ def lambda_handler(event, context):
                 return permission_error
 
             try:
-
                 body = get_request_body(event)
-
                 return create_complaint(body, user)
 
             except json.JSONDecodeError:
-
                 return response(400, {
                     "error": "Invalid JSON"
                 })
 
             except Exception as error:
-
                 print("Complaint creation error:", str(error))
-
                 return response(500, {
                     "error": "Internal server error"
                 })
@@ -1132,7 +1109,6 @@ def lambda_handler(event, context):
                 return permission_error
 
             try:
-
                 body = get_request_body(event)
 
                 if not isinstance(body, dict):
@@ -1143,15 +1119,12 @@ def lambda_handler(event, context):
                 return generate_upload_url(body)
 
             except json.JSONDecodeError:
-
                 return response(400, {
                     "error": "Invalid JSON"
                 })
 
             except Exception as error:
-
                 print("Upload URL error:", str(error))
-
                 return response(500, {
                     "error": "Internal server error"
                 })
@@ -1171,21 +1144,16 @@ def lambda_handler(event, context):
                 return permission_error
 
             try:
-
                 body = get_request_body(event)
-
                 return update_complaint_status(body)
 
             except json.JSONDecodeError:
-
                 return response(400, {
                     "error": "Invalid JSON"
                 })
 
             except Exception as error:
-
                 print("Status update error:", str(error))
-
                 return response(500, {
                     "error": "Internal server error"
                 })

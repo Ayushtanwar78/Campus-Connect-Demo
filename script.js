@@ -25,6 +25,7 @@ const viewTitles = {
 };
 
 let complaintsCache = [];
+let analystComplaints = [];
 let toastTimer;
 let refreshInProgress = false;
 
@@ -584,20 +585,23 @@ function renderAnalystDashboard(items) {
 
   if (!isAnalyst) return;
 
-  // Total complaints.
+  // Keep complaints available for the details view.
+  analystComplaints = items;
+
+  // ========================================
+  // ANALYST STATISTICS
+  // ========================================
+
   const total = items.length;
 
-  // Pending complaints.
   const pending = items.filter(item =>
     displayStatus(item.status) === "Pending"
   ).length;
 
-  // Resolved complaints.
   const resolved = items.filter(item =>
     displayStatus(item.status) === "Completed"
   ).length;
 
-  // Under Review = In Progress.
   const underReview = items.filter(item =>
     displayStatus(item.status) === "In Progress"
   ).length;
@@ -653,13 +657,185 @@ function renderAnalystDashboard(items) {
   }
 
   if (departmentEmpty) {
-
     departmentEmpty.classList.toggle(
       "show",
       sortedDepartments.length === 0
     );
   }
+
+  // ========================================
+  // ALL COMPLAINTS TABLE
+  // ========================================
+
+  const complaintRows = $("analystComplaintRows");
+  const complaintEmpty = $("analystComplaintEmpty");
+
+  if (complaintRows) {
+
+    complaintRows.innerHTML = items.map(item => {
+
+      const complaintId = String(item.complaint_id || "");
+
+      return `
+        <tr>
+          <td>${escapeHTML(complaintId)}</td>
+
+          <td>${escapeHTML(item.title || "Untitled")}</td>
+
+          <td>${escapeHTML(
+            item.department || "Not recorded"
+          )}</td>
+
+          <td>${escapeHTML(item.category || "N/A")}</td>
+
+          <td>${escapeHTML(
+            displayStatus(item.status)
+          )}</td>
+
+          <td>
+            <button
+              type="button"
+              class="button secondary"
+              data-analyst-open="${escapeHTML(complaintId)}">
+              View
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  if (complaintEmpty) {
+    complaintEmpty.classList.toggle(
+      "show",
+      items.length === 0
+    );
+  }
+
+  // Open complaint details.
+  if (complaintRows) {
+
+    complaintRows.onclick = function(event) {
+
+      const button = event.target.closest(
+        "[data-analyst-open]"
+      );
+
+      if (!button) return;
+
+      openAnalystComplaint(
+        button.dataset.analystOpen
+      );
+    };
+  }
+
+  // Close complaint details.
+  const closeButton = $("closeAnalystDetails");
+
+  if (closeButton) {
+    closeButton.onclick = function() {
+
+      const details = $("analystComplaintDetails");
+
+      if (details) {
+        details.hidden = true;
+      }
+    };
+  }
 }
+
+
+// ========================================
+// OPEN ANALYST COMPLAINT DETAILS
+// ========================================
+
+function openAnalystComplaint(complaintId) {
+
+  if (!isAnalyst) return;
+
+  const complaint = analystComplaints.find(item =>
+    String(item.complaint_id) === String(complaintId)
+  );
+
+  if (!complaint) {
+    showToast("Complaint details not found.");
+    return;
+  }
+
+  const details = $("analystComplaintDetails");
+  const content = $("analystComplaintDetailsContent");
+
+  if (!details || !content) return;
+
+  const fields = [
+    ["Complaint ID", complaint.complaint_id],
+    ["Student ID", complaint.student_id],
+    ["Department", complaint.department],
+    ["Title", complaint.title],
+    ["Category", complaint.category],
+    ["Location", complaint.location],
+    ["Description", complaint.description],
+    ["Status", displayStatus(complaint.status)],
+    ["Submitted On", complaint.created_at]
+  ];
+
+  const detailsHTML = fields.map(([label, value]) => `
+    <div class="detail-item">
+      <strong>${escapeHTML(label)}</strong>
+      <p>${escapeHTML(
+        value === undefined || value === null || value === ""
+          ? "Not available"
+          : String(value)
+      )}</p>
+    </div>
+  `).join("");
+
+  // ========================================
+  // STATUS HISTORY
+  // ========================================
+
+  const history = Array.isArray(complaint.status_history)
+    ? complaint.status_history
+    : [];
+
+  const historyHTML = history.length
+    ? history.map(entry => `
+        <div class="detail-item">
+          <strong>${escapeHTML(entry.status || "Status update")}</strong>
+          <p>${escapeHTML(
+            entry.remarks || entry.remark || "No remarks"
+          )}</p>
+          <small>${escapeHTML(
+            entry.timestamp || entry.updated_at ||
+            entry.created_at || ""
+          )}</small>
+        </div>
+      `).join("")
+    : "<p>No status history available.</p>";
+
+  content.innerHTML = `
+    <div class="details-grid">
+      ${detailsHTML}
+    </div>
+
+    <div class="panel">
+      <h3>Status History</h3>
+      ${historyHTML}
+    </div>
+
+    <p class="muted">
+      Analyst access: Read-only
+    </p>
+  `;
+
+  details.hidden = false;
+
+  details.scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+}
+  
 
 // ==========================================
 // MAIN DASHBOARD RENDERING

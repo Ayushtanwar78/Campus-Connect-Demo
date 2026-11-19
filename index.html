@@ -356,6 +356,62 @@
 
         </article>
 
+        <!-- ALL COMPLAINTS FOR ANALYST -->
+<article class="panel">
+
+  <div class="panel-heading">
+    <div>
+      <h2>All Complaints</h2>
+      <p class="muted">
+        View complaint information and track reported issues.
+      </p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Complaint ID</th>
+          <th>Title</th>
+          <th>Department</th>
+          <th>Category</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody id="analystComplaintRows"></tbody>
+    </table>
+  </div>
+
+  <div class="empty-state" id="analystComplaintEmpty">
+    <div class="empty-icon">▤</div>
+    <strong>No complaints available</strong>
+    <p>Registered complaints will appear here.</p>
+  </div>
+
+</article>
+
+<!-- ANALYST COMPLAINT DETAILS -->
+<div id="analystComplaintDetails" class="panel" hidden>
+  <div class="panel-heading">
+    <div>
+      <h2>Complaint Details</h2>
+      <p class="muted">Read-only complaint information</p>
+    </div>
+
+    <button
+      type="button"
+      class="button secondary"
+      id="closeAnalystDetails">
+      Close
+    </button>
+  </div>
+
+  <div id="analystComplaintDetailsContent"></div>
+</div>
+
       </section>
 
       <!-- ===================================== -->
