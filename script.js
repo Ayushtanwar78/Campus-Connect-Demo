@@ -1,12 +1,24 @@
+// ==========================================
+// CAMPUSCONNECT - MAIN JAVASCRIPT
+// STUDENT | ADMINISTRATOR | ANALYST
+// ==========================================
+
 const API_BASE = "https://t7jsqlniysev7enb3elizqhe7a0hjezy.lambda-url.us-east-1.on.aws/";
 const DEMO_MODE = false;
 
 const $ = id => document.getElementById(id);
 
-const views = ["dashboard", "report", "complaints", "admin"];
+const views = [
+  "dashboard",
+  "analyst",
+  "report",
+  "complaints",
+  "admin"
+];
 
 const viewTitles = {
   dashboard: "Dashboard",
+  analyst: "Analyst Dashboard",
   report: "Report an Issue",
   complaints: "My Complaints",
   admin: "Admin Management"
@@ -25,7 +37,9 @@ const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"];
 
 function getLoggedInUser() {
   try {
-    return JSON.parse(sessionStorage.getItem("campusUser") || "null");
+    return JSON.parse(
+      sessionStorage.getItem("campusUser") || "null"
+    );
   } catch {
     return null;
   }
@@ -39,12 +53,13 @@ const userEmail = String(campusUser?.email || "").toLowerCase();
 
 const isStudent = userRole === "student";
 const isAdmin = userRole === "administrator";
+const isAnalyst = userRole === "analyst";
 
 if (
   !campusToken ||
   !campusUser ||
   !userEmail ||
-  (!isStudent && !isAdmin)
+  (!isStudent && !isAdmin && !isAnalyst)
 ) {
   window.location.href = "login.html";
 }
@@ -84,10 +99,26 @@ function displayStatus(status) {
     .toLowerCase()
     .replace(/-/g, "_");
 
-  if (value === "submitted" || value === "pending") return "Pending";
-  if (value === "in progress" || value === "in_progress") return "In Progress";
-  if (value === "resolved" || value === "completed") return "Completed";
-  if (value === "rejected") return "Rejected";
+  if (value === "submitted" || value === "pending") {
+    return "Pending";
+  }
+
+  if (
+    value === "in progress" ||
+    value === "in_progress" ||
+    value === "under_review" ||
+    value === "in_review"
+  ) {
+    return "In Progress";
+  }
+
+  if (value === "resolved" || value === "completed") {
+    return "Completed";
+  }
+
+  if (value === "rejected") {
+    return "Rejected";
+  }
 
   return status || "Pending";
 }
@@ -106,7 +137,11 @@ function statusBadge(status) {
   const label = displayStatus(status);
   const cssClass = label.toLowerCase().replace(/\s+/g, "-");
 
-  return `<span class="badge ${escapeHTML(cssClass)}">${escapeHTML(label)}</span>`;
+  return `
+    <span class="badge ${escapeHTML(cssClass)}">
+      ${escapeHTML(label)}
+    </span>
+  `;
 }
 
 // ==========================================
@@ -136,44 +171,81 @@ function showToast(message) {
 // ==========================================
 
 function configureRoleInterface() {
+
+  // Control sidebar navigation and navigation buttons.
   document.querySelectorAll("[data-view], [data-go]").forEach(element => {
+
     const view = element.dataset.view || element.dataset.go;
 
     const allowed =
-      view === "dashboard" ||
+      ((isStudent || isAdmin) && view === "dashboard") ||
+      (isAnalyst && view === "analyst") ||
       (isStudent && ["report", "complaints"].includes(view)) ||
       (isAdmin && view === "admin");
 
     element.hidden = !allowed;
+    element.style.display = allowed ? "" : "none";
   });
 
+  // Student / Administrator dashboard.
+  const dashboardPanel = $("dashboardView");
+
+  if (dashboardPanel) {
+    dashboardPanel.hidden = isAnalyst;
+  }
+
+  // Analyst dashboard.
+  const analystPanel = $("analystView");
+
+  if (analystPanel) {
+    analystPanel.hidden = !isAnalyst;
+  }
+
+  // Administrator panel.
   const adminPanel = $("adminView");
-  if (adminPanel) adminPanel.hidden = !isAdmin;
 
+  if (adminPanel) {
+    adminPanel.hidden = !isAdmin;
+  }
+
+  // Student report form.
   const reportPanel = $("reportView");
-  if (reportPanel) reportPanel.hidden = !isStudent;
 
+  if (reportPanel) {
+    reportPanel.hidden = !isStudent;
+  }
+
+  // Student complaints page.
   const complaintsPanel = $("complaintsView");
-  if (complaintsPanel) complaintsPanel.hidden = !isStudent;
 
+  if (complaintsPanel) {
+    complaintsPanel.hidden = !isStudent;
+  }
+
+  // Dashboard heading.
   const dashboardHeading = document.querySelector(
-    "#dashboardView h1, #dashboardView h2"
+    "#dashboardView h1"
   );
 
   if (dashboardHeading) {
     dashboardHeading.textContent = isAdmin
       ? "ADMINISTRATOR DASHBOARD"
-      : "STUDENT DASHBOARD";
+      : "Welcome back 👋";
   }
 
-  // Students see only the Total Complaints statistic card.
+  // Students see only their Total Complaints card.
   document.querySelectorAll(
     "#dashboardView .stats-grid .stat-card"
   ).forEach((card, index) => {
     card.hidden = isStudent && index !== 0;
   });
 
-  showView("dashboard");
+  // Automatically open the correct dashboard.
+  if (isAnalyst) {
+    showView("analyst");
+  } else {
+    showView("dashboard");
+  }
 }
 
 // ==========================================
@@ -181,11 +253,13 @@ function configureRoleInterface() {
 // ==========================================
 
 function setupProfileAndLogout() {
+
   const displayName = campusUser.full_name || userEmail;
 
   const roleNames = {
     student: "Student",
-    administrator: "Administrator"
+    administrator: "Administrator",
+    analyst: "Analyst"
   };
 
   const profileName = $("profileName");
@@ -215,6 +289,7 @@ function setupProfileAndLogout() {
 
   if (logoutButton) {
     logoutButton.addEventListener("click", () => {
+
       sessionStorage.removeItem("campusToken");
       sessionStorage.removeItem("campusUser");
       sessionStorage.removeItem("campusTokenExpiry");
@@ -229,12 +304,16 @@ function setupProfileAndLogout() {
 // ==========================================
 
 function unwrapApiData(data) {
-  if (!data || !data.body) return data || {};
+
+  if (!data || !data.body) {
+    return data || {};
+  }
 
   try {
     return typeof data.body === "string"
       ? JSON.parse(data.body)
       : data.body;
+
   } catch (error) {
     console.error("Could not parse Lambda response body:", error);
     return data;
@@ -242,19 +321,21 @@ function unwrapApiData(data) {
 }
 
 function extractComplaints(data) {
+
   if (Array.isArray(data)) return data;
 
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.complaints)) return data.complaints;
-  if (Array.isArray(data.Items)) return data.Items;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.complaints)) return data.complaints;
+  if (Array.isArray(data?.Items)) return data.Items;
 
-  if (data.body) {
+  if (data?.body) {
     try {
       const body = typeof data.body === "string"
         ? JSON.parse(data.body)
         : data.body;
 
       return extractComplaints(body);
+
     } catch (error) {
       console.error("Could not read API response body:", error);
     }
@@ -268,26 +349,55 @@ function extractComplaints(data) {
 // ==========================================
 
 async function apiRequest(path, options = {}) {
-  const base = API_BASE.endsWith("/") ? API_BASE : API_BASE + "/";
+
+  const base = API_BASE.endsWith("/")
+    ? API_BASE
+    : API_BASE + "/";
 
   const headers = {
     ...(options.headers || {}),
     "Authorization": `Bearer ${campusToken}`
   };
 
-  const apiResponse = await fetch(
-    base + path.replace(/^\/+/, ""),
-    {
-      ...options,
-      headers
-    }
-  );
+  let apiResponse;
 
-  const data = await apiResponse.json().catch(() => ({}));
+  try {
+
+    apiResponse = await fetch(
+      base + path.replace(/^\/+/, ""),
+      {
+        ...options,
+        headers
+      }
+    );
+
+  } catch (error) {
+
+    console.error("API network error:", error);
+
+    throw new Error(
+      "Could not connect to the server. Check your internet connection and Lambda CORS settings."
+    );
+  }
+
+  const responseText = await apiResponse.text();
+
+  let data = {};
+
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    throw new Error(
+      "The server returned an invalid response. Check the Lambda response."
+    );
+  }
+
   const result = unwrapApiData(data);
 
   if (!apiResponse.ok) {
+
     if (apiResponse.status === 401) {
+
       sessionStorage.removeItem("campusToken");
       sessionStorage.removeItem("campusUser");
       sessionStorage.removeItem("campusTokenExpiry");
@@ -315,9 +425,11 @@ async function apiRequest(path, options = {}) {
 // ==========================================
 
 function normalizeComplaint(item) {
+
   return {
     complaint_id: item.complaint_id || item.id || "",
     student_id: item.student_id || "",
+    department: item.department || "",
     title: item.title || "Untitled Complaint",
     category: item.category || "Other",
     location: item.location || "Not specified",
@@ -339,6 +451,7 @@ function normalizeComplaint(item) {
 // ==========================================
 
 function renderStatusHistory(history) {
+
   if (!Array.isArray(history) || history.length === 0) {
     return `
       <p class="history-empty">
@@ -349,6 +462,7 @@ function renderStatusHistory(history) {
 
   return `
     <details class="status-history">
+
       <summary>
         View status history (${history.length})
       </summary>
@@ -356,6 +470,7 @@ function renderStatusHistory(history) {
       <ul>
         ${history.map(entry => `
           <li>
+
             <strong>
               ${escapeHTML(displayStatus(entry.status))}
             </strong>
@@ -367,9 +482,11 @@ function renderStatusHistory(history) {
             ${entry.remarks ? `
               <p>${escapeHTML(entry.remarks)}</p>
             ` : ""}
+
           </li>
         `).join("")}
       </ul>
+
     </details>
   `;
 }
@@ -379,6 +496,7 @@ function renderStatusHistory(history) {
 // ==========================================
 
 async function uploadAttachment(file) {
+
   if (!file) return "";
 
   if (!ALLOWED_FILE_TYPES.includes(file.type)) {
@@ -393,9 +511,11 @@ async function uploadAttachment(file) {
 
   const uploadData = await apiRequest("upload-url", {
     method: "POST",
+
     headers: {
       "Content-Type": "application/json"
     },
+
     body: JSON.stringify({
       content_type: file.type,
       file_size: file.size
@@ -413,9 +533,11 @@ async function uploadAttachment(file) {
 
   const uploadResponse = await fetch(uploadUrl, {
     method: "PUT",
+
     headers: {
       "Content-Type": file.type
     },
+
     body: file
   });
 
@@ -429,18 +551,23 @@ async function uploadAttachment(file) {
 }
 
 // ==========================================
-// LOAD COMPLAINTS
+// LOAD COMPLAINTS FROM AWS LAMBDA
 // ==========================================
 
 async function loadComplaints() {
+
   let records = [];
 
   if (DEMO_MODE) {
+
     records = JSON.parse(
       localStorage.getItem("campusconnect_demo_complaints") || "[]"
     );
+
   } else {
+
     const data = await apiRequest("complaints");
+
     records = extractComplaints(data);
   }
 
@@ -450,11 +577,98 @@ async function loadComplaints() {
 }
 
 // ==========================================
-// DASHBOARD RENDERING
+// ANALYST DASHBOARD
+// ==========================================
+
+function renderAnalystDashboard(items) {
+
+  if (!isAnalyst) return;
+
+  // Total complaints.
+  const total = items.length;
+
+  // Pending complaints.
+  const pending = items.filter(item =>
+    displayStatus(item.status) === "Pending"
+  ).length;
+
+  // Resolved complaints.
+  const resolved = items.filter(item =>
+    displayStatus(item.status) === "Completed"
+  ).length;
+
+  // Under Review = In Progress.
+  const underReview = items.filter(item =>
+    displayStatus(item.status) === "In Progress"
+  ).length;
+
+  if ($("analystTotalCount")) {
+    $("analystTotalCount").textContent = total;
+  }
+
+  if ($("analystPendingCount")) {
+    $("analystPendingCount").textContent = pending;
+  }
+
+  if ($("analystResolvedCount")) {
+    $("analystResolvedCount").textContent = resolved;
+  }
+
+  if ($("analystReviewCount")) {
+    $("analystReviewCount").textContent = underReview;
+  }
+
+  // ========================================
+  // DEPARTMENT-WISE COMPLAINTS
+  // ========================================
+
+  const departmentCounts = {};
+
+  items.forEach(item => {
+
+    const department = String(
+      item.department || "Not recorded (older complaint)"
+    ).trim();
+
+    departmentCounts[department] =
+      (departmentCounts[department] || 0) + 1;
+  });
+
+  const sortedDepartments = Object.entries(departmentCounts)
+    .sort((a, b) => b[1] - a[1]);
+
+  const departmentRows = $("departmentRows");
+  const departmentEmpty = $("departmentEmpty");
+
+  if (departmentRows) {
+
+    departmentRows.innerHTML = sortedDepartments.map(
+      ([department, count]) => `
+        <tr>
+          <td>${escapeHTML(department)}</td>
+          <td><strong>${count}</strong></td>
+        </tr>
+      `
+    ).join("");
+  }
+
+  if (departmentEmpty) {
+
+    departmentEmpty.classList.toggle(
+      "show",
+      sortedDepartments.length === 0
+    );
+  }
+}
+
+// ==========================================
+// MAIN DASHBOARD RENDERING
 // ==========================================
 
 function render() {
+
   const items = [...complaintsCache].sort((a, b) => {
+
     return new Date(b.created_at || 0) -
       new Date(a.created_at || 0);
   });
@@ -471,6 +685,7 @@ function render() {
     item => displayStatus(item.status) === "Completed"
   ).length;
 
+  // Student / Administrator statistics.
   if ($("totalCount")) {
     $("totalCount").textContent = items.length;
   }
@@ -487,11 +702,14 @@ function render() {
     $("resolvedCount").textContent = completed;
   }
 
-  // Recent complaints
+  // Recent complaints.
   if ($("recentRows")) {
+
     $("recentRows").innerHTML = items.slice(0, 5).map(item => `
       <tr>
+
         <td>
+
           <div class="complaint-title">
             ${escapeHTML(item.title)}
           </div>
@@ -499,23 +717,28 @@ function render() {
           <div class="complaint-id">
             ID: ${escapeHTML(item.complaint_id || "—")}
           </div>
+
         </td>
 
         <td>${escapeHTML(item.category)}</td>
+
         <td>${formatDate(item.created_at)}</td>
+
         <td>${statusBadge(item.status)}</td>
+
       </tr>
     `).join("");
   }
 
   if ($("recentEmpty")) {
+
     $("recentEmpty").classList.toggle(
       "show",
       items.length === 0
     );
   }
 
-  // Student complaint filter
+  // Student complaint filter.
   const filter = $("statusFilter")
     ? $("statusFilter").value
     : "All";
@@ -531,20 +754,26 @@ function render() {
   // ========================================
 
   if ($("allComplaints")) {
+
     $("allComplaints").innerHTML = isStudent
       ? filtered.map(item => `
+
         <article class="complaint-card">
 
           <div class="complaint-card-top">
+
             <div class="complaint-card-heading">
+
               <h3>${escapeHTML(item.title)}</h3>
 
               <span class="complaint-id">
                 ID: ${escapeHTML(item.complaint_id || "—")}
               </span>
+
             </div>
 
             ${statusBadge(item.status)}
+
           </div>
 
           <div class="complaint-details">
@@ -567,12 +796,15 @@ function render() {
           </div>
 
           <div class="complaint-description">
+
             <span class="detail-label">Description</span>
+
             <p>
               ${escapeHTML(
                 item.description || "No description provided."
               )}
             </p>
+
           </div>
 
           ${item.attachment_key ? `
@@ -583,36 +815,50 @@ function render() {
           ` : ""}
 
           <div class="complaint-description">
-            <span class="detail-label">Latest administrator remarks</span>
+
+            <span class="detail-label">
+              Latest administrator remarks
+            </span>
 
             <p>
               ${escapeHTML(
                 item.admin_remarks || "No administrator remarks yet."
               )}
             </p>
+
           </div>
 
           <div class="complaint-description">
+
             <span class="detail-label">Last updated</span>
-            <p>${formatDate(item.updated_at || item.created_at)}</p>
+
+            <p>
+              ${formatDate(item.updated_at || item.created_at)}
+            </p>
+
           </div>
 
           ${renderStatusHistory(item.status_history)}
 
         </article>
+
       `).join("")
       : "";
   }
 
   if ($("allEmpty")) {
+
     $("allEmpty").classList.toggle(
       "show",
       isStudent && filtered.length === 0
     );
   }
 
-  // Administrator complaint management
+  // Administrator complaint management.
   renderAdminComplaints(items);
+
+  // Analyst statistics and department-wise data.
+  renderAnalystDashboard(items);
 }
 
 // ==========================================
@@ -620,11 +866,13 @@ function render() {
 // ==========================================
 
 function renderAdminComplaints(items) {
+
   const container = $("adminComplaints");
 
   if (!container) return;
 
   if (!isAdmin) {
+
     container.innerHTML = "";
 
     if ($("adminEmpty")) {
@@ -635,21 +883,27 @@ function renderAdminComplaints(items) {
   }
 
   container.innerHTML = items.map(item => {
+
     const selectedStatus = statusValue(item.status);
 
     return `
+
       <article class="complaint-card admin-card">
 
         <div class="complaint-card-top">
+
           <div class="complaint-card-heading">
+
             <h3>${escapeHTML(item.title)}</h3>
 
             <span class="complaint-id">
               ID: ${escapeHTML(item.complaint_id)}
             </span>
+
           </div>
 
           ${statusBadge(item.status)}
+
         </div>
 
         <div class="complaint-details">
@@ -677,8 +931,11 @@ function renderAdminComplaints(items) {
         </div>
 
         <div class="complaint-description">
+
           <span class="detail-label">Description</span>
+
           <p>${escapeHTML(item.description)}</p>
+
         </div>
 
         ${item.attachment_key ? `
@@ -691,12 +948,14 @@ function renderAdminComplaints(items) {
         <div class="admin-update-form">
 
           <label class="field">
+
             <span>Update complaint status</span>
 
             <select
               class="admin-status"
               data-id="${escapeHTML(item.complaint_id)}"
             >
+
               <option value="pending"
                 ${selectedStatus === "pending" ? "selected" : ""}>
                 Pending
@@ -716,10 +975,13 @@ function renderAdminComplaints(items) {
                 ${selectedStatus === "rejected" ? "selected" : ""}>
                 Rejected
               </option>
+
             </select>
+
           </label>
 
           <label class="field">
+
             <span>Admin remarks</span>
 
             <textarea
@@ -729,6 +991,7 @@ function renderAdminComplaints(items) {
               maxlength="1000"
               placeholder="Write an update or resolution note..."
             >${escapeHTML(item.admin_remarks)}</textarea>
+
           </label>
 
           <button
@@ -744,10 +1007,12 @@ function renderAdminComplaints(items) {
         ${renderStatusHistory(item.status_history)}
 
       </article>
+
     `;
   }).join("");
 
   if ($("adminEmpty")) {
+
     $("adminEmpty").classList.toggle(
       "show",
       items.length === 0
@@ -760,7 +1025,9 @@ function renderAdminComplaints(items) {
 // ==========================================
 
 if ($("adminComplaints")) {
+
   $("adminComplaints").addEventListener("click", async event => {
+
     const button = event.target.closest(".admin-update-button");
 
     if (!button || !isAdmin) return;
@@ -790,16 +1057,21 @@ if ($("adminComplaints")) {
     button.textContent = "Updating...";
 
     try {
+
       await apiRequest("update-status", {
+
         method: "POST",
+
         headers: {
           "Content-Type": "application/json"
         },
+
         body: JSON.stringify({
           complaint_id: complaintId,
           status: status,
           admin_remarks: adminRemarks
         })
+
       });
 
       showToast("Complaint status updated successfully!");
@@ -807,6 +1079,7 @@ if ($("adminComplaints")) {
       await loadComplaints();
 
     } catch (error) {
+
       console.error("Status update failed:", error);
 
       showToast("Status update failed: " + error.message);
@@ -822,22 +1095,32 @@ if ($("adminComplaints")) {
 // ==========================================
 
 function showView(name) {
+
   const allowed =
-    name === "dashboard" ||
+    ((isStudent || isAdmin) && name === "dashboard") ||
+    (isAnalyst && name === "analyst") ||
     (isStudent && ["report", "complaints"].includes(name)) ||
     (isAdmin && name === "admin");
 
-  if (!allowed || !views.includes(name)) return;
+  if (!allowed || !views.includes(name)) {
+    return;
+  }
 
   views.forEach(view => {
+
     const section = $(view + "View");
 
     if (section) {
-      section.classList.toggle("active", view === name);
+
+      const active = view === name;
+
+      section.classList.toggle("active", active);
+      section.hidden = !active;
     }
   });
 
   document.querySelectorAll(".nav-link").forEach(button => {
+
     button.classList.toggle(
       "active",
       button.dataset.view === name
@@ -852,8 +1135,10 @@ function showView(name) {
     $("sidebar").classList.remove("open");
   }
 
+  // Load data when opening a dashboard or complaint page.
   if (
     name === "dashboard" ||
+    name === "analyst" ||
     name === "complaints" ||
     name === "admin"
   ) {
@@ -866,17 +1151,25 @@ function showView(name) {
 // ==========================================
 
 async function refreshData() {
-  // Prevent overlapping refresh requests.
+
   if (refreshInProgress) return;
 
   refreshInProgress = true;
 
   try {
+
     await loadComplaints();
+
   } catch (error) {
+
     console.error("Loading complaints failed:", error);
-    showToast("Unable to load complaints: " + error.message);
+
+    showToast(
+      "Unable to load complaints: " + error.message
+    );
+
   } finally {
+
     refreshInProgress = false;
   }
 }
@@ -886,8 +1179,13 @@ async function refreshData() {
 // ==========================================
 
 document.querySelectorAll("[data-view], [data-go]").forEach(button => {
+
   button.addEventListener("click", () => {
-    showView(button.dataset.view || button.dataset.go);
+
+    showView(
+      button.dataset.view || button.dataset.go
+    );
+
   });
 });
 
@@ -896,10 +1194,13 @@ document.querySelectorAll("[data-view], [data-go]").forEach(button => {
 // ==========================================
 
 if ($("menuToggle")) {
+
   $("menuToggle").addEventListener("click", () => {
+
     if ($("sidebar")) {
       $("sidebar").classList.toggle("open");
     }
+
   });
 }
 
@@ -908,7 +1209,9 @@ if ($("menuToggle")) {
 // ==========================================
 
 if ($("statusFilter")) {
+
   $("statusFilter").addEventListener("change", render);
+
 }
 
 // ==========================================
@@ -916,7 +1219,25 @@ if ($("statusFilter")) {
 // ==========================================
 
 if ($("refreshAdmin")) {
+
   $("refreshAdmin").addEventListener("click", refreshData);
+
+}
+
+// ==========================================
+// ANALYST REFRESH
+// ==========================================
+
+if ($("refreshAnalyst")) {
+
+  $("refreshAnalyst").addEventListener("click", async () => {
+
+    showToast("Refreshing analyst statistics...");
+
+    await refreshData();
+
+  });
+
 }
 
 // ==========================================
@@ -924,10 +1245,13 @@ if ($("refreshAdmin")) {
 // ==========================================
 
 if ($("attachment")) {
+
   $("attachment").addEventListener("change", event => {
+
     const file = event.target.files[0];
 
     if (!file) {
+
       if ($("fileHint")) {
         $("fileHint").textContent =
           "JPG or PNG only. Maximum size 2 MB.";
@@ -940,6 +1264,7 @@ if ($("attachment")) {
     const validSize = file.size <= MAX_FILE_SIZE;
 
     if (!validType || !validSize) {
+
       event.target.value = "";
 
       if ($("fileHint")) {
@@ -950,9 +1275,11 @@ if ($("attachment")) {
       showToast("Choose a JPG or PNG file up to 2 MB.");
 
     } else if ($("fileHint")) {
+
       $("fileHint").textContent =
         `${file.name} selected. Ready to upload.`;
     }
+
   });
 }
 
@@ -961,11 +1288,15 @@ if ($("attachment")) {
 // ==========================================
 
 if ($("complaintForm")) {
+
   $("complaintForm").addEventListener("submit", async event => {
+
     event.preventDefault();
 
     if (!isStudent) {
+
       showToast("Only students can submit complaints.");
+
       return;
     }
 
@@ -980,37 +1311,56 @@ if ($("complaintForm")) {
       : null;
 
     const payload = {
+
       title: String(formData.get("title") || "").trim(),
+
       category: String(formData.get("category") || "").trim(),
+
       location: String(formData.get("location") || "").trim(),
+
       description: String(formData.get("description") || "").trim(),
+
       attachment_key: ""
     };
 
     if (selectedFile) {
+
       const validType = ALLOWED_FILE_TYPES.includes(selectedFile.type);
       const validSize = selectedFile.size <= MAX_FILE_SIZE;
 
       if (!validType || !validSize) {
+
         showToast("Choose a JPG or PNG file up to 2 MB.");
+
         return;
       }
     }
 
+    // DEMO MODE
     if (DEMO_MODE) {
+
       const list = JSON.parse(
         localStorage.getItem("campusconnect_demo_complaints") || "[]"
       );
 
       list.push({
+
         ...payload,
+
         student_id: userEmail,
+
         complaint_id: "CC-" + Date.now(),
+
         status: "submitted",
+
         created_at: new Date().toISOString(),
+
         updated_at: new Date().toISOString(),
+
         admin_remarks: "",
+
         status_history: []
+
       });
 
       localStorage.setItem(
@@ -1023,6 +1373,7 @@ if ($("complaintForm")) {
       form.reset();
 
       render();
+
       showView("complaints");
 
       showToast("Demo complaint saved.");
@@ -1030,24 +1381,33 @@ if ($("complaintForm")) {
       return;
     }
 
+    // LIVE AWS MODE
     try {
+
       if (selectedFile) {
-        payload.attachment_key = await uploadAttachment(selectedFile);
+
+        payload.attachment_key =
+          await uploadAttachment(selectedFile);
       }
 
       showToast("Submitting complaint...");
 
       await apiRequest("complaints", {
+
         method: "POST",
+
         headers: {
           "Content-Type": "application/json"
         },
+
         body: JSON.stringify(payload)
+
       });
 
       form.reset();
 
       if ($("fileHint")) {
+
         $("fileHint").textContent =
           "JPG or PNG only. Maximum size 2 MB.";
       }
@@ -1063,10 +1423,14 @@ if ($("complaintForm")) {
       );
 
     } catch (error) {
+
       console.error("Complaint submission failed:", error);
 
-      showToast("Submission failed: " + error.message);
+      showToast(
+        "Submission failed: " + error.message
+      );
     }
+
   });
 }
 
@@ -1074,11 +1438,10 @@ if ($("complaintForm")) {
 // AUTOMATIC STUDENT COMPLAINT REFRESH
 // ==========================================
 
-// Refresh complaints every 15 seconds while the
-// student is viewing the My Complaints page.
-
 if (isStudent && campusToken) {
+
   setInterval(() => {
+
     const complaintsPage = $("complaintsView");
 
     if (
@@ -1087,6 +1450,7 @@ if (isStudent && campusToken) {
     ) {
       refreshData();
     }
+
   }, 15000);
 }
 
@@ -1095,5 +1459,7 @@ if (isStudent && campusToken) {
 // ==========================================
 
 setupProfileAndLogout();
+
 configureRoleInterface();
+
 render();
