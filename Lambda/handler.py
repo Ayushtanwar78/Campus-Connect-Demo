@@ -591,12 +591,14 @@ def get_complaints(user):
 
     try:
 
-        if user["role"] == "administrator":
+        if user["role"] in {"administrator", "analyst"}:
 
+            # Administrators and analysts can view all complaints.
             result = table.scan(Limit=100)
 
         elif user["role"] == "student":
 
+            # Students can view only their own complaints.
             result = table.scan(
                 FilterExpression=Attr("student_id").eq(user["email"]),
                 Limit=100
@@ -605,7 +607,7 @@ def get_complaints(user):
         else:
 
             return response(403, {
-                "error": "Analysts cannot access complaint records"
+                "error": "You are not authorized to access complaints"
             })
 
         items = result.get("Items", [])
@@ -636,7 +638,6 @@ def get_complaints(user):
         return response(500, {
             "error": "Could not load complaints"
         })
-
 
 # ==========================================
 # GENERATE S3 UPLOAD URL
@@ -768,12 +769,33 @@ def create_complaint(body, user):
 
     current_time = datetime.now(timezone.utc).isoformat()
 
+    # Retrieve the student's registered department
+    try:
+        student_result = users_table.get_item(
+            Key={"email": user["email"]}
+        )
+
+        student_data = student_result.get("Item", {})
+
+        department = student_data.get(
+            "department",
+            "Not specified"
+        )
+
+    except ClientError as error:
+        print("Student department lookup error:", error)
+
+        return response(500, {
+            "error": "Could not retrieve student details"
+        })
+
     item = {
         "complaint_id": str(uuid.uuid4()),
 
         # Student identity comes from the verified login token.
         # Never trust a student_id supplied by the browser.
         "student_id": user["email"],
+        "department": department,
 
         "title": str(body["title"]).strip()[:160],
         "category": str(body["category"]).strip()[:80],
@@ -1043,18 +1065,18 @@ def lambda_handler(event, context):
         # ----------------------------------
         # STUDENT AND ADMIN COMPLAINT ACCESS
         # ----------------------------------
-
+        
         if method == "GET" and path == "/complaints":
 
-            permission_error = require_role(
-                user,
-                {"student", "administrator"}
-            )
+         permission_error = require_role(
+        user,
+        {"student", "administrator", "analyst"}
+    )
 
-            if permission_error:
-                return permission_error
+        if permission_error:
+          return permission_error
 
-            return get_complaints(user)
+        return get_complaints(user)
 
         # ----------------------------------
         # STUDENT ONLY: CREATE COMPLAINT
