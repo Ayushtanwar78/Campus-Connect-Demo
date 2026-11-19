@@ -11,6 +11,7 @@ const $ = id => document.getElementById(id);
 const views = [
   "dashboard",
   "analyst",
+  "analystComplaints",
   "report",
   "complaints",
   "admin"
@@ -19,6 +20,7 @@ const views = [
 const viewTitles = {
   dashboard: "Dashboard",
   analyst: "Analyst Dashboard",
+  analystComplaints: "All Complaints",
   report: "Report an Issue",
   complaints: "My Complaints",
   admin: "Admin Management"
@@ -173,14 +175,13 @@ function showToast(message) {
 
 function configureRoleInterface() {
 
-  // Control sidebar navigation and navigation buttons.
   document.querySelectorAll("[data-view], [data-go]").forEach(element => {
 
     const view = element.dataset.view || element.dataset.go;
 
     const allowed =
       ((isStudent || isAdmin) && view === "dashboard") ||
-      (isAnalyst && view === "analyst") ||
+      (isAnalyst && ["analyst", "analystComplaints"].includes(view)) ||
       (isStudent && ["report", "complaints"].includes(view)) ||
       (isAdmin && view === "admin");
 
@@ -188,42 +189,42 @@ function configureRoleInterface() {
     element.style.display = allowed ? "" : "none";
   });
 
-  // Student / Administrator dashboard.
   const dashboardPanel = $("dashboardView");
 
   if (dashboardPanel) {
     dashboardPanel.hidden = isAnalyst;
   }
 
-  // Analyst dashboard.
   const analystPanel = $("analystView");
 
   if (analystPanel) {
     analystPanel.hidden = !isAnalyst;
   }
 
-  // Administrator panel.
+  const analystComplaintsPanel = $("analystComplaintsView");
+
+  if (analystComplaintsPanel) {
+    analystComplaintsPanel.hidden = !isAnalyst;
+  }
+
   const adminPanel = $("adminView");
 
   if (adminPanel) {
     adminPanel.hidden = !isAdmin;
   }
 
-  // Student report form.
   const reportPanel = $("reportView");
 
   if (reportPanel) {
     reportPanel.hidden = !isStudent;
   }
 
-  // Student complaints page.
   const complaintsPanel = $("complaintsView");
 
   if (complaintsPanel) {
     complaintsPanel.hidden = !isStudent;
   }
 
-  // Dashboard heading.
   const dashboardHeading = document.querySelector(
     "#dashboardView h1"
   );
@@ -234,14 +235,12 @@ function configureRoleInterface() {
       : "Welcome back 👋";
   }
 
-  // Students see only their Total Complaints card.
   document.querySelectorAll(
     "#dashboardView .stats-grid .stat-card"
   ).forEach((card, index) => {
     card.hidden = isStudent && index !== 0;
   });
 
-  // Automatically open the correct dashboard.
   if (isAnalyst) {
     showView("analyst");
   } else {
@@ -477,11 +476,16 @@ function renderStatusHistory(history) {
             </strong>
 
             <span>
-              ${formatDate(entry.changed_at || entry.updated_at)}
+              ${escapeHTML(formatDate(
+                entry.changed_at ||
+                entry.updated_at ||
+                entry.timestamp ||
+                entry.created_at
+              ))}
             </span>
 
-            ${entry.remarks ? `
-              <p>${escapeHTML(entry.remarks)}</p>
+            ${entry.remarks || entry.remark ? `
+              <p>${escapeHTML(entry.remarks || entry.remark)}</p>
             ` : ""}
 
           </li>
@@ -578,14 +582,13 @@ async function loadComplaints() {
 }
 
 // ==========================================
-// ANALYST DASHBOARD
+// ANALYST DASHBOARD AND ALL COMPLAINTS
 // ==========================================
 
 function renderAnalystDashboard(items) {
 
   if (!isAnalyst) return;
 
-  // Keep complaints available for the details view.
   analystComplaints = items;
 
   // ========================================
@@ -678,6 +681,7 @@ function renderAnalystDashboard(items) {
 
       return `
         <tr>
+
           <td>${escapeHTML(complaintId)}</td>
 
           <td>${escapeHTML(item.title || "Untitled")}</td>
@@ -688,9 +692,7 @@ function renderAnalystDashboard(items) {
 
           <td>${escapeHTML(item.category || "N/A")}</td>
 
-          <td>${escapeHTML(
-            displayStatus(item.status)
-          )}</td>
+          <td>${statusBadge(item.status)}</td>
 
           <td>
             <button
@@ -700,6 +702,7 @@ function renderAnalystDashboard(items) {
               View
             </button>
           </td>
+
         </tr>
       `;
     }).join("");
@@ -713,6 +716,7 @@ function renderAnalystDashboard(items) {
   }
 
   // Open complaint details.
+
   if (complaintRows) {
 
     complaintRows.onclick = function(event) {
@@ -730,9 +734,11 @@ function renderAnalystDashboard(items) {
   }
 
   // Close complaint details.
+
   const closeButton = $("closeAnalystDetails");
 
   if (closeButton) {
+
     closeButton.onclick = function() {
 
       const details = $("analystComplaintDetails");
@@ -743,7 +749,6 @@ function renderAnalystDashboard(items) {
     };
   }
 }
-
 
 // ========================================
 // OPEN ANALYST COMPLAINT DETAILS
@@ -776,7 +781,7 @@ function openAnalystComplaint(complaintId) {
     ["Location", complaint.location],
     ["Description", complaint.description],
     ["Status", displayStatus(complaint.status)],
-    ["Submitted On", complaint.created_at]
+    ["Submitted On", formatDate(complaint.created_at)]
   ];
 
   const detailsHTML = fields.map(([label, value]) => `
@@ -790,9 +795,7 @@ function openAnalystComplaint(complaintId) {
     </div>
   `).join("");
 
-  // ========================================
   // STATUS HISTORY
-  // ========================================
 
   const history = Array.isArray(complaint.status_history)
     ? complaint.status_history
@@ -801,31 +804,104 @@ function openAnalystComplaint(complaintId) {
   const historyHTML = history.length
     ? history.map(entry => `
         <div class="detail-item">
-          <strong>${escapeHTML(entry.status || "Status update")}</strong>
-          <p>${escapeHTML(
-            entry.remarks || entry.remark || "No remarks"
-          )}</p>
-          <small>${escapeHTML(
-            entry.timestamp || entry.updated_at ||
-            entry.created_at || ""
-          )}</small>
+
+          <strong>
+            ${escapeHTML(displayStatus(entry.status))}
+          </strong>
+
+          <p>
+            ${escapeHTML(
+              entry.remarks || entry.remark || "No remarks"
+            )}
+          </p>
+
+          <small>
+            ${escapeHTML(formatDate(
+              entry.changed_at ||
+              entry.updated_at ||
+              entry.timestamp ||
+              entry.created_at
+            ))}
+          </small>
+
         </div>
       `).join("")
     : "<p>No status history available.</p>";
 
+  const selectedStatus = statusValue(complaint.status);
+
   content.innerHTML = `
+
     <div class="details-grid">
       ${detailsHTML}
     </div>
 
     <div class="panel">
+
       <h3>Status History</h3>
+
       ${historyHTML}
+
     </div>
 
-    <p class="muted">
-      Analyst access: Read-only
-    </p>
+    <div class="panel analyst-update-form">
+
+      <h3>Update Complaint</h3>
+
+      <label class="field">
+
+        <span>Complaint Status</span>
+
+        <select id="analystStatusSelect">
+
+          <option value="pending"
+            ${selectedStatus === "pending" ? "selected" : ""}>
+            Pending
+          </option>
+
+          <option value="in_progress"
+            ${selectedStatus === "in_progress" ? "selected" : ""}>
+            In Progress
+          </option>
+
+          <option value="completed"
+            ${selectedStatus === "completed" ? "selected" : ""}>
+            Completed
+          </option>
+
+          <option value="rejected"
+            ${selectedStatus === "rejected" ? "selected" : ""}>
+            Rejected
+          </option>
+
+        </select>
+
+      </label>
+
+      <label class="field">
+
+        <span>Analyst Remarks</span>
+
+        <textarea
+          id="analystRemarksInput"
+          rows="3"
+          maxlength="1000"
+          placeholder="Write an update or resolution note..."
+        >${escapeHTML(complaint.admin_remarks)}</textarea>
+
+      </label>
+
+      <button
+        type="button"
+        class="button primary"
+        id="analystUpdateStatusButton"
+        data-id="${escapeHTML(complaint.complaint_id)}">
+
+        Update Status
+
+      </button>
+
+    </div>
   `;
 
   details.hidden = false;
@@ -835,7 +911,83 @@ function openAnalystComplaint(complaintId) {
     block: "start"
   });
 }
-  
+
+// ==========================================
+// ANALYST UPDATE STATUS
+// ==========================================
+
+if ($("analystComplaintDetailsContent")) {
+
+  $("analystComplaintDetailsContent").addEventListener(
+    "click",
+    async event => {
+
+      const button = event.target.closest(
+        "#analystUpdateStatusButton"
+      );
+
+      if (!button || !isAnalyst) return;
+
+      const complaintId = button.dataset.id;
+
+      const statusSelect = $("analystStatusSelect");
+      const remarksInput = $("analystRemarksInput");
+
+      if (!statusSelect) {
+        showToast("Please select a complaint status.");
+        return;
+      }
+
+      const status = statusSelect.value;
+
+      const adminRemarks = remarksInput
+        ? remarksInput.value.trim()
+        : "";
+
+      button.disabled = true;
+      button.textContent = "Updating...";
+
+      try {
+
+        await apiRequest("update-status", {
+
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            complaint_id: complaintId,
+            status: status,
+            admin_remarks: adminRemarks
+          })
+
+        });
+
+        showToast("Complaint updated successfully!");
+
+        await loadComplaints();
+
+        openAnalystComplaint(complaintId);
+
+      } catch (error) {
+
+        console.error(
+          "Analyst status update failed:",
+          error
+        );
+
+        showToast(
+          "Status update failed: " + error.message
+        );
+
+        button.disabled = false;
+        button.textContent = "Update Status";
+      }
+    }
+  );
+}
 
 // ==========================================
 // MAIN DASHBOARD RENDERING
@@ -861,7 +1013,8 @@ function render() {
     item => displayStatus(item.status) === "Completed"
   ).length;
 
-  // Student / Administrator statistics.
+  // STUDENT / ADMINISTRATOR STATISTICS
+
   if ($("totalCount")) {
     $("totalCount").textContent = items.length;
   }
@@ -878,7 +1031,8 @@ function render() {
     $("resolvedCount").textContent = completed;
   }
 
-  // Recent complaints.
+  // RECENT COMPLAINTS
+
   if ($("recentRows")) {
 
     $("recentRows").innerHTML = items.slice(0, 5).map(item => `
@@ -914,7 +1068,8 @@ function render() {
     );
   }
 
-  // Student complaint filter.
+  // STUDENT COMPLAINT FILTER
+
   const filter = $("statusFilter")
     ? $("statusFilter").value
     : "All";
@@ -1030,10 +1185,12 @@ function render() {
     );
   }
 
-  // Administrator complaint management.
+  // ADMINISTRATOR COMPLAINT MANAGEMENT
+
   renderAdminComplaints(items);
 
-  // Analyst statistics and department-wise data.
+  // ANALYST DASHBOARD AND ALL COMPLAINTS
+
   renderAnalystDashboard(items);
 }
 
@@ -1274,7 +1431,7 @@ function showView(name) {
 
   const allowed =
     ((isStudent || isAdmin) && name === "dashboard") ||
-    (isAnalyst && name === "analyst") ||
+    (isAnalyst && ["analyst", "analystComplaints"].includes(name)) ||
     (isStudent && ["report", "complaints"].includes(name)) ||
     (isAdmin && name === "admin");
 
@@ -1311,10 +1468,10 @@ function showView(name) {
     $("sidebar").classList.remove("open");
   }
 
-  // Load data when opening a dashboard or complaint page.
   if (
     name === "dashboard" ||
     name === "analyst" ||
+    name === "analystComplaints" ||
     name === "complaints" ||
     name === "admin"
   ) {
@@ -1417,6 +1574,24 @@ if ($("refreshAnalyst")) {
 }
 
 // ==========================================
+// ANALYST ALL COMPLAINTS REFRESH
+// ==========================================
+
+if ($("refreshAnalystComplaints")) {
+
+  $("refreshAnalystComplaints").addEventListener(
+    "click",
+    async () => {
+
+      showToast("Refreshing all complaints...");
+
+      await refreshData();
+
+    }
+  );
+}
+
+// ==========================================
 // IMAGE VALIDATION
 // ==========================================
 
@@ -1513,6 +1688,7 @@ if ($("complaintForm")) {
     }
 
     // DEMO MODE
+
     if (DEMO_MODE) {
 
       const list = JSON.parse(
@@ -1558,6 +1734,7 @@ if ($("complaintForm")) {
     }
 
     // LIVE AWS MODE
+
     try {
 
       if (selectedFile) {

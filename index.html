@@ -30,6 +30,10 @@
           <span class="nav-icon">▤</span> Analyst Dashboard
         </button>
 
+        <button class="nav-link" data-view="analystComplaints">
+  <span class="nav-icon">☷</span> All Complaints
+</button>
+
         <button class="nav-link" data-view="report">
           <span class="nav-icon">＋</span> Report an Issue
         </button>
@@ -356,63 +360,102 @@
 
         </article>
 
-        <!-- ALL COMPLAINTS FOR ANALYST -->
-<article class="panel">
+        </section>
 
-  <div class="panel-heading">
+      <!-- ===================================== -->
+<!-- ANALYST: ALL COMPLAINTS -->
+<!-- ===================================== -->
+
+<section class="view" id="analystComplaintsView">
+
+  <div class="page-heading">
+
     <div>
-      <h2>All Complaints</h2>
+      <p class="eyebrow">COMPLAINT MANAGEMENT</p>
+
+      <h1>All Complaints</h1>
+
       <p class="muted">
-        View complaint information and track reported issues.
+        Review student complaints, view details, and update complaint status.
       </p>
     </div>
+
+    <button class="button secondary" id="refreshAnalystComplaints">
+      ↻ Refresh
+    </button>
+
   </div>
 
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Complaint ID</th>
-          <th>Title</th>
-          <th>Department</th>
-          <th>Category</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
+  <!-- COMPLAINT TABLE -->
 
-      <tbody id="analystComplaintRows"></tbody>
-    </table>
-  </div>
+  <article class="panel">
 
-  <div class="empty-state" id="analystComplaintEmpty">
-    <div class="empty-icon">▤</div>
-    <strong>No complaints available</strong>
-    <p>Registered complaints will appear here.</p>
-  </div>
-
-</article>
-
-<!-- ANALYST COMPLAINT DETAILS -->
-<div id="analystComplaintDetails" class="panel" hidden>
-  <div class="panel-heading">
-    <div>
-      <h2>Complaint Details</h2>
-      <p class="muted">Read-only complaint information</p>
+    <div class="panel-heading">
+      <div>
+        <h2>Registered Complaints</h2>
+        <p class="muted">
+          View and manage complaints submitted by students.
+        </p>
+      </div>
     </div>
 
-    <button
-      type="button"
-      class="button secondary"
-      id="closeAnalystDetails">
-      Close
-    </button>
+    <div class="table-wrap">
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>Complaint ID</th>
+            <th>Title</th>
+            <th>Department</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+
+        <tbody id="analystComplaintRows"></tbody>
+
+      </table>
+
+    </div>
+
+    <div class="empty-state" id="analystComplaintEmpty">
+      <div class="empty-icon">☷</div>
+      <strong>No complaints available</strong>
+      <p>Registered complaints will appear here.</p>
+    </div>
+
+  </article>
+
+  <!-- COMPLAINT DETAILS AND STATUS UPDATE -->
+
+  <div id="analystComplaintDetails" class="panel" hidden>
+
+    <div class="panel-heading">
+
+      <div>
+        <h2>Complaint Details</h2>
+        <p class="muted">
+          Review the complaint and update its status.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        class="button secondary"
+        id="closeAnalystDetails">
+        Close
+      </button>
+
+    </div>
+
+    <div id="analystComplaintDetailsContent"></div>
+
   </div>
 
-  <div id="analystComplaintDetailsContent"></div>
-</div>
+</section>        
 
-      </section>
 
       <!-- ===================================== -->
       <!-- REPORT AN ISSUE -->
