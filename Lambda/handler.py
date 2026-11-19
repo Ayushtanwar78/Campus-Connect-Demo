@@ -489,11 +489,17 @@ def register_user(body):
 def login_user(body):
     email = body.get("email", "").strip().lower()
     password = body.get("password", "")
+    selected_role = str(body.get("role", "")).strip().lower()
 
-    if not email or not password:
-        return response(400, {
-            "message": "Email and password are required"
-        })
+    if not email or not password or not selected_role:
+         return response(400, {
+        "message": "Email, password and role are required"
+    })
+
+    if selected_role not in ["student", "analyst", "administrator"]:
+          return response(400, {
+        "message": "Invalid role selected"
+    })
 
     # ==========================================
     # ADMINISTRATOR LOGIN
@@ -555,7 +561,13 @@ def login_user(body):
             return response(500, {
                 "message": "Unable to access user account"
             })
-
+    # ==========================================
+    # VERIFY SELECTED RULE
+    # ==========================================
+    if selected_role != role:
+        return response(403, {
+            "message": "The selected role does not match your account"
+        })
     # ==========================================
     # GENERATE LOGIN TOKEN
     # ==========================================
