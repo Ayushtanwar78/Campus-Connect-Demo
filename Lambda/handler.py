@@ -61,7 +61,7 @@ def response(status_code, body):
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
             "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
+            "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS"
         },
         "body": json.dumps(body, default=str)
     }
@@ -971,6 +971,11 @@ def lambda_handler(event, context):
     )
 
     path = event.get("rawPath", "/").rstrip("/") or "/"
+
+    if method == "OPTIONS":
+        return response(200, { 
+            "message": "CORS Preflight Successful"
+        })
 
     # --------------------------------------
     # CORS PREFLIGHT
