@@ -1137,7 +1137,7 @@ def lambda_handler(event, context):
 
             permission_error = require_role(
                 user,
-                {"administrator"}
+                {"administrator", "analyst"}
             )
 
             if permission_error:
